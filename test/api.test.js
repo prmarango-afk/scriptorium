@@ -15,7 +15,7 @@ before(async () => {
   servidor = crearApp(db).listen(0);
   await new Promise((r) => servidor.once('listening', r));
   base = `http://localhost:${servidor.address().port}`;
-  tokenAdmin = (await api('POST', '/api/sesion', { tipo: 'admin', pin: '1234' }, null)).body.token;
+  tokenAdmin = (await api('POST', '/api/sesion', { email: 'biblioteca@colegio.es', password: 'scriptorium1' }, null)).body.token;
 });
 after(() => servidor.close());
 
@@ -109,11 +109,11 @@ test('Estadísticas del panel', async () => {
 });
 
 test('Roles: sin sesión o como lector no se puede gestionar', async () => {
-  assert.equal((await api('POST', '/api/sesion', { tipo: 'admin', pin: '0000' }, null)).status, 401);
+  assert.equal((await api('POST', '/api/sesion', { email: 'biblioteca@colegio.es', password: 'mala' }, null)).status, 401);
   assert.equal((await api('GET', '/api/stats', null, null)).status, 401);
   assert.equal((await api('GET', '/api/libros', null, null)).status, 200); // el catálogo es público
 
-  const lector = (await api('POST', '/api/sesion', { tipo: 'lector', email: 'lucia.martinez@alumnos.colegio.es' }, null)).body;
+  const lector = (await api('POST', '/api/sesion', { email: 'lucia.martinez@alumnos.colegio.es', password: 'scriptorium1' }, null)).body;
   assert.equal(lector.rol, 'lector');
   assert.equal((await api('GET', '/api/usuarios', null, lector.token)).status, 403);
   assert.equal((await api('POST', '/api/libros', { isbn: '9780306406157', titulo: 'X', autor: 'Y', ejemplares_totales: 1 }, lector.token)).status, 403);
@@ -124,7 +124,7 @@ test('Roles: sin sesión o como lector no se puede gestionar', async () => {
 });
 
 test('Petición de un lector: la atiende el bibliotecario y se convierte en préstamo', async () => {
-  const lector = (await api('POST', '/api/sesion', { tipo: 'lector', email: 'leo.torres@alumnos.colegio.es' }, null)).body;
+  const lector = (await api('POST', '/api/sesion', { email: 'leo.torres@alumnos.colegio.es', password: 'scriptorium1' }, null)).body;
   const libro = (await api('GET', '/api/libros?disponibles=1')).body.find((l) => l.ejemplares_disponibles >= 1);
 
   const s = await api('POST', '/api/yo/solicitudes', { libro_id: libro.id }, lector.token);
@@ -143,4 +143,28 @@ test('Petición de un lector: la atiende el bibliotecario y se convierte en pré
   assert.equal((await api('POST', `/api/yo/prestamos/${p.body.id}/renovar`, null, lector.token)).status, 200);
   const otro = (await api('GET', '/api/prestamos?estado=abiertos')).body.find((x) => x.usuario_id !== yo.id);
   assert.equal((await api('POST', `/api/yo/prestamos/${otro.id}/renovar`, null, lector.token)).status, 403);
+});
+
+test('Cuentas: registro, contraseñas cifradas, perfil y movimientos con fecha y hora', async () => {
+  const debil = await api('POST', '/api/registro', { nombre: 'Nora', apellidos: 'Nueva', email: 'nora@alumnos.colegio.es', rol: 'alumno', password: 'corta' }, null);
+  assert.equal(debil.status, 400);
+
+  const reg = await api('POST', '/api/registro', { nombre: 'Nora', apellidos: 'Nueva', email: 'nora@alumnos.colegio.es', rol: 'alumno', curso: '1º ESO B', password: 'lectora2026' }, null);
+  assert.equal(reg.status, 201);
+  assert.equal(reg.body.rol, 'lector');
+  assert.equal((await api('POST', '/api/registro', { nombre: 'Otra', apellidos: 'Vez', email: 'nora@alumnos.colegio.es', rol: 'alumno', password: 'lectora2026' }, null)).status, 409);
+
+  // La contraseña nunca sale de la API
+  const lista = (await api('GET', '/api/usuarios')).body;
+  assert.ok(lista.every((u) => !('password_hash' in u)));
+
+  // Cambiar contraseña exige la actual
+  assert.equal((await api('POST', '/api/perfil/password', { actual: 'mal', nueva: 'otraClave99' }, reg.body.token)).status, 400);
+  assert.equal((await api('POST', '/api/perfil/password', { actual: 'lectora2026', nueva: 'otraClave99' }, reg.body.token)).status, 200);
+  assert.equal((await api('POST', '/api/sesion', { email: 'nora@alumnos.colegio.es', password: 'otraClave99' }, null)).status, 201);
+
+  // El registro de movimientos guarda fecha y hora de cada acción
+  const movs = (await api('GET', '/api/movimientos?limite=500')).body;
+  assert.ok(movs.some((m) => m.tipo === 'registro' && /Nora Nueva/.test(m.detalle)));
+  assert.match(movs[0].creado_en, /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/);
 });

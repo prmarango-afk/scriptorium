@@ -12,6 +12,9 @@ const estado = {
   prestamos: [],
   stats: null,
   yo: null,               // datos del lector conectado
+  perfil: null,           // cuenta conectada (nombre, foto...)
+  movimientos: [],
+  grupoActividad: '',
   filtroPrestamos: 'abiertos',
   filtroRol: '',
   categoria: '',
@@ -60,6 +63,11 @@ const ICONOS = {
   salir: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/>',
   bandeja: '<path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/>',
   marcador: '<path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z"/>',
+  ojo: '<path d="M2.06 12.35a1 1 0 0 1 0-.7 10.75 10.75 0 0 1 19.88 0 1 1 0 0 1 0 .7 10.75 10.75 0 0 1-19.88 0"/><circle cx="12" cy="12" r="3"/>',
+  ojoTachado: '<path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c4.4 0 8.2 2.7 9.94 6.65a1 1 0 0 1 0 .7 10.8 10.8 0 0 1-1.44 2.49"/><path d="M14.08 14.16a3 3 0 0 1-4.24-4.24"/><path d="M17.48 17.5a10.75 10.75 0 0 1-15.42-5.15 1 1 0 0 1 0-.7 10.75 10.75 0 0 1 4.45-5.14"/><path d="m2 2 20 20"/>',
+  camara: '<path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/>',
+  candado: '<rect width="18" height="11" x="3" y="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
+  usuarioMas: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6"/><path d="M22 11h-6"/>',
   cola: '<path d="M16 3h5v5"/><path d="M8 3H3v5"/><path d="M12 22v-8.3a4 4 0 0 0-1.17-2.83L3 3"/><path d="m15 9 6-6"/>',
 };
 function icono(nombre, clases = 'w-4 h-4') {
@@ -81,6 +89,10 @@ const hoyISO = () => new Date().toLocaleDateString('sv-SE');
 const diasEntre = (a, b) => Math.round((new Date(`${b}T00:00:00`) - new Date(`${a}T00:00:00`)) / 86400000);
 const diasHasta = (iso) => diasEntre(hoyISO(), iso);
 const sumarDias = (n) => { const d = new Date(); d.setDate(d.getDate() + n); return d.toLocaleDateString('sv-SE'); };
+// "5 nov · 10:42" a partir de "2026-11-05 10:42:00"
+const fmtFechaHora = (dt, opciones = { day: 'numeric', month: 'short' }) => (dt
+  ? `${fmtFecha(dt, opciones)} · ${dt.slice(11, 16)}` : '—');
+const fmtHora = (dt) => (dt ? dt.slice(11, 16) : '');
 const plural = (n, uno, varios) => `${n} ${n === 1 ? uno : varios}`;
 const formatearIsbn = (i) => (i?.length === 13 ? `${i.slice(0, 3)}-${i.slice(3, 5)}-${i.slice(5, 9)}-${i.slice(9, 12)}-${i.slice(12)}` : i);
 function haceCuanto(fechaHora) {
@@ -159,18 +171,24 @@ function portadaGenerada(libro, clases) {
     <span class="font-semibold tracking-tight ${grande ? 'text-[15px] leading-tight line-clamp-5' : 'text-[0.6rem] leading-[1.1] line-clamp-4'}">${esc(libro.titulo)}</span>
     <span class="${grande ? 'text-[11px]' : 'text-[0.48rem]'} opacity-80 truncate">${esc(libro.autor || '')}</span></div>`;
 }
+// Las portadas propias tienen dos tamaños: <isbn>.webp (360 px) y <isbn>-s.webp (160 px, para miniaturas)
+const esPortadaLocal = (url) => /^\/portadas\/.+\.webp$/.test(url || '');
+const miniatura = (url) => (esPortadaLocal(url) ? url.replace(/\.webp$/, '-s.webp') : url);
+const esMiniatura = (clases) => /\bw-(7|8|10|12|16|20)\b/.test(clases);
+
 function portada(libro, clases = 'w-12 h-16') {
   const generada = portadaGenerada(libro, clases);
   if (!libro.portada) return generada;
-  return `<span class="contents" data-fallback="${esc(generada)}"><img src="${esc(libro.portada)}" alt="Portada de ${esc(libro.titulo)}" loading="lazy"
+  const src = esMiniatura(clases) ? miniatura(libro.portada) : libro.portada;
+  return `<span class="contents" data-fallback="${esc(generada)}"><img src="${esc(src)}" alt="Portada de ${esc(libro.titulo)}" loading="lazy" decoding="async"
     class="${clases} object-cover rounded-[6px] bg-tinte/5 ${SOMBRA_PORTADA}"
     onerror="this.parentElement.outerHTML=this.parentElement.dataset.fallback" /></span>`;
 }
-const portadaGrandeUrl = (url) => (url || '').replace('-M.jpg', '-L.jpg');
+const portadaGrandeUrl = (url) => (url || '');
 // Fondo difuminado con la portada (como en Apple Music / Books)
 function fondoPortada(libro, clases = '') {
   const [a, b] = coloresDe(libro.titulo);
-  const estilo = libro.portada ? `background-image:url('${esc(libro.portada)}')` : `background:linear-gradient(150deg,${a},${b})`;
+  const estilo = libro.portada ? `background-image:url('${esc(miniatura(libro.portada))}')` : `background:linear-gradient(150deg,${a},${b})`;
   return `<div class="absolute inset-0 bg-cover bg-center blur-3xl scale-150 opacity-60 ${clases}" style="${estilo}"></div>`;
 }
 
@@ -209,6 +227,7 @@ const ROL = {
   profesor: insignia('Profesor', 'morado', 'maletin'),
 };
 function avatar(u, clases = 'w-9 h-9 text-xs') {
+  if (u.foto) return `<img src="${esc(u.foto)}" alt="" class="${clases} shrink-0 rounded-full object-cover ring-1 ring-inset ring-white/20 bg-tinte/10" loading="lazy" decoding="async" />`;
   const partes = u.apellidos ? [u.nombre, u.apellidos] : String(u.nombre || '').split(' ');
   const ini = `${partes[0]?.[0] || ''}${partes[1]?.[0] || ''}`.toUpperCase();
   const fondo = u.rol === 'profesor' ? 'from-[#bf5af2] to-[#5e5ce6]' : u.rol === 'admin' ? 'from-[#ff9f0a] to-[#ff375f]' : 'from-[#64d2ff] to-[#0a84ff]';
@@ -228,60 +247,99 @@ document.addEventListener('click', (e) => {
   if (!e.target.closest('.btn-tema')) return;
   const nuevo = document.documentElement.dataset.tema === 'oscuro' ? 'claro' : 'oscuro';
   document.documentElement.dataset.tema = nuevo;
+  $('meta[name=theme-color]')?.setAttribute('content', nuevo === 'claro' ? '#f2f2f7' : '#050507');
   guardar('scriptorium.tema', nuevo);
   pintarBotonesTema();
 });
 
-// ───────────────────────── Sesión ─────────────────────────
+// ───────────────────────── Acceso: entrar y crear cuenta ─────────────────────────
+const DEMO_PASSWORD = 'scriptorium1';
+
 async function mostrarAcceso() {
   $('#aplicacion').classList.add('hidden');
   $('#pantalla-acceso').classList.remove('hidden');
   $('#error-acceso').classList.add('hidden');
   try {
-    const [libros, lectores] = await Promise.all([api('GET', '/api/libros'), api('GET', '/api/demo/lectores')]);
+    const [libros, cuentas] = await Promise.all([api('GET', '/api/libros'), api('GET', '/api/demo/cuentas')]);
     pintarMuro(libros);
-    $('#lectores-demo').innerHTML = lectores.length ? `
-      <p class="etiqueta mb-3">Lectores de la demo</p>
-      <div class="flex flex-wrap gap-2">${lectores.map((u) => `
+    $('#cuentas-demo').innerHTML = cuentas.length ? `
+      <p class="etiqueta mb-1">Cuentas de la demo</p>
+      <p class="text-xs text-t3 mb-3">Contraseña de todas: <b class="text-t1 font-semibold font-mono">${DEMO_PASSWORD}</b></p>
+      <div class="flex flex-wrap gap-2">${cuentas.map((u) => `
         <button type="button" class="flex items-center gap-2 rounded-full pl-1 pr-3 py-1 bg-tinte/[0.05] ring-1 ring-inset ring-tinte/10 hover:bg-tinte/[0.1] transition text-xs" data-email-demo="${esc(u.email)}">
-          ${avatar(u, 'w-6 h-6 text-[9px]')}${esc(u.nombre)}</button>`).join('')}</div>` : '';
-  } catch { /* la pantalla funciona igual sin muro */ }
+          ${u.rol === 'admin'
+            ? `<span class="w-6 h-6 rounded-full grid place-items-center text-white bg-gradient-to-br from-[#ff9f0a] to-[#ff375f]">${icono('estanteria', 'w-3 h-3')}</span>Biblioteca`
+            : `${avatar(u, 'w-6 h-6 text-[9px]')}${esc(u.nombre)}`}</button>`).join('')}</div>` : '';
+  } catch { /* la pantalla funciona igual sin muro ni cuentas demo */ }
 }
 
 function pintarMuro(libros) {
   const conPortada = libros.filter((l) => l.portada);
-  const lista = [...conPortada, ...libros.filter((l) => !l.portada)];
   const columnas = 4;
   $('#muro').innerHTML = Array.from({ length: columnas }, (_, c) => {
-    const propios = lista.filter((_, i) => i % columnas === c);
-    const serie = [...propios, ...propios, ...propios].map((l) => portada(l, 'w-full aspect-[2/3]')).join('');
+    const propios = conPortada.filter((_, i) => i % columnas === c);
+    const serie = [...propios, ...propios].map((l) => portada(l, 'w-full aspect-[2/3]')).join('');
     return `<div class="flex-1 min-w-0"><div class="muro-col ${c % 2 ? 'bajar' : ''} flex flex-col gap-4" style="--dur:${70 + c * 12}s">${serie}${serie}</div></div>`;
   }).join('');
-  $('#muro-movil').innerHTML = conPortada.slice(0, 10).map((l) => portada(l, 'w-16 h-24 shrink-0')).join('');
+  $('#muro-movil').innerHTML = conPortada.slice(0, 12).map((l) => portada(l, 'w-16 h-24 shrink-0')).join('');
 }
 
-$$('#selector-acceso .seg').forEach((b) => b.addEventListener('click', () => {
-  $$('#selector-acceso .seg').forEach((x) => x.classList.toggle('activa', x === b));
-  const admin = b.dataset.acceso === 'admin';
-  $('#form-acceso-admin').classList.toggle('hidden', !admin);
-  $('#form-acceso-lector').classList.toggle('hidden', admin);
+function modoAcceso(modo) {
+  const registro = modo === 'registro';
+  $$('#selector-acceso .seg').forEach((x) => x.classList.toggle('activa', x.dataset.acceso === modo));
+  $('#form-entrar').classList.toggle('hidden', registro);
+  $('#form-registro').classList.toggle('hidden', !registro);
+  $('#titulo-acceso').textContent = registro ? 'Crea tu cuenta' : 'Bienvenido';
+  $('#subtitulo-acceso').textContent = registro ? 'Para alumnos y profesores del centro.' : 'Entra con tu cuenta del centro.';
   $('#error-acceso').classList.add('hidden');
-  (admin ? $('#acceso-pin') : $('#acceso-email')).focus();
-}));
+  (registro ? $('#form-registro [name=nombre]') : $('#acceso-email')).focus();
+}
+$$('#selector-acceso .seg').forEach((b) => b.addEventListener('click', () => modoAcceso(b.dataset.acceso)));
+
 document.addEventListener('click', (e) => {
   const demo = e.target.closest('[data-email-demo]');
-  if (demo) { $('#acceso-email').value = demo.dataset.emailDemo; $('#form-acceso-lector').requestSubmit(); }
+  if (demo) {
+    $('#acceso-email').value = demo.dataset.emailDemo;
+    $('#acceso-password').value = DEMO_PASSWORD;
+    $('#form-entrar').requestSubmit();
+  }
+  const ver = e.target.closest('.ver-password');
+  if (ver) {
+    const input = $('input', ver.parentElement);
+    const mostrar = input.type === 'password';
+    input.type = mostrar ? 'text' : 'password';
+    ver.innerHTML = icono(mostrar ? 'ojoTachado' : 'ojo', 'w-4 h-4');
+    ver.setAttribute('aria-label', mostrar ? 'Ocultar contraseña' : 'Mostrar contraseña');
+  }
 });
 
-async function entrar(datos, boton) {
+// Selector de rol y medidor de fuerza en el registro
+const formRegistro = $('#form-registro');
+$$('input[name=rol]', formRegistro).forEach((r) => r.addEventListener('change', () => {
+  $$('#registro-rol .seg').forEach((l) => l.classList.toggle('activa', $('input', l).checked));
+  const profe = formRegistro.rol.value === 'profesor';
+  $('#registro-label-curso').textContent = profe ? 'Departamento' : 'Curso';
+  formRegistro.curso.placeholder = profe ? 'Matemáticas' : '2º ESO B';
+  formRegistro.email.placeholder = profe ? 'nombre@colegio.es' : 'nombre@alumnos.colegio.es';
+}));
+formRegistro.password.addEventListener('input', () => {
+  const v = formRegistro.password.value;
+  const puntos = [v.length >= 8, /[a-zA-Z]/.test(v) && /\d/.test(v), v.length >= 12, /[^a-zA-Z0-9]/.test(v) || /[A-Z]/.test(v) && /[a-z]/.test(v)]
+    .filter(Boolean).length;
+  const colores = ['rgb(var(--rojo))', 'rgb(var(--naranja))', 'rgb(var(--amarillo))', 'rgb(var(--verde))'];
+  $$('#fuerza-password span').forEach((b, i) => { b.style.background = i < puntos ? colores[puntos - 1] : ''; });
+});
+
+async function entrar(peticion, boton) {
   boton.disabled = true;
   try {
-    const s = await api('POST', '/api/sesion', datos);
+    const s = await peticion();
     estado.sesion = s;
     guardar('scriptorium.sesion', JSON.stringify(s));
-    $('#acceso-pin').value = '';
+    $('#acceso-password').value = '';
+    formRegistro.reset();
     await arrancarApp();
-    toast(s.rol === 'admin' ? 'Sesión iniciada como personal de biblioteca' : `Hola, ${s.nombre.split(' ')[0]}`);
+    toast(s.rol === 'admin' ? `Hola, ${s.nombre.split(' ')[0]}. Sesión de biblioteca iniciada` : `Hola, ${s.nombre.split(' ')[0]}`);
   } catch (err) {
     $('#error-acceso').textContent = err.message;
     $('#error-acceso').classList.remove('hidden');
@@ -289,13 +347,21 @@ async function entrar(datos, boton) {
     boton.disabled = false;
   }
 }
-$('#form-acceso-lector').addEventListener('submit', (e) => { e.preventDefault(); entrar({ tipo: 'lector', email: $('#acceso-email').value }, $('button[type=submit]', e.target)); });
-$('#form-acceso-admin').addEventListener('submit', (e) => { e.preventDefault(); entrar({ tipo: 'admin', pin: $('#acceso-pin').value }, $('button[type=submit]', e.target)); });
+$('#form-entrar').addEventListener('submit', (e) => {
+  e.preventDefault();
+  entrar(() => api('POST', '/api/sesion', { email: $('#acceso-email').value, password: $('#acceso-password').value }), $('button[type=submit]', e.target));
+});
+formRegistro.addEventListener('submit', (e) => {
+  e.preventDefault();
+  const datos = Object.fromEntries(new FormData(formRegistro));
+  entrar(() => api('POST', '/api/registro', datos), $('button[type=submit]', e.target));
+});
 
 function cerrarSesion(avisarServidor = true) {
   if (avisarServidor && estado.sesion) api('DELETE', '/api/sesion').catch(() => {});
   estado.sesion = null;
   estado.yo = null;
+  estado.perfil = null;
   guardar('scriptorium.sesion', null);
   $$('dialog[open]').forEach((d) => d.close());
   mostrarAcceso();
@@ -309,6 +375,7 @@ const NAV = {
     { vista: 'prestamos', texto: 'Préstamos', icono: 'intercambio', insignia: 'retrasos' },
     { vista: 'libros', texto: 'Catálogo', icono: 'libro' },
     { vista: 'usuarios', texto: 'Lectores', icono: 'usuarios' },
+    { vista: 'actividad', texto: 'Actividad', icono: 'historial' },
   ],
   lector: [
     { vista: 'mi-inicio', texto: 'Inicio', icono: 'casa' },
@@ -324,15 +391,18 @@ function pintarNavegacion() {
     <button class="lado-btn" data-vista="${i.vista}">${icono(i.icono, 'w-[18px] h-[18px]')}${i.texto}${burbuja(i, 'ml-auto')}</button>`).join('');
   $('#dock').innerHTML = items.map((i) => `
     <button class="dock-btn" data-vista="${i.vista}">${icono(i.icono, 'w-[22px] h-[22px]')}<span class="text-[11px] font-medium">${i.texto}</span>${burbuja(i, 'absolute top-1 right-3 ring-2 ring-modal')}</button>`).join('');
+  pintarSesion();
+}
+
+function pintarSesion() {
   const s = estado.sesion;
-  const rolTexto = s.rol === 'admin' ? 'Personal de biblioteca' : 'Lector';
+  const p = estado.perfil || { nombre: s.nombre };
+  const rolTexto = s.rol === 'admin' ? 'Personal de biblioteca' : (p.rol === 'profesor' ? 'Profesor' : 'Lector');
+  const datosAvatar = { ...p, rol: s.rol === 'admin' ? 'admin' : p.rol };
   $$('.rol-texto').forEach((e) => { e.textContent = rolTexto; });
-  $$('.nombre-sesion').forEach((e) => { e.textContent = s.nombre; });
-  $$('.avatar-sesion').forEach((e) => {
-    e.innerHTML = s.rol === 'admin'
-      ? `<div class="w-9 h-9 rounded-full grid place-items-center text-white bg-gradient-to-br from-[#ff9f0a] to-[#ff375f] ring-1 ring-inset ring-white/20">${icono('estanteria', 'w-4 h-4')}</div>`
-      : avatar({ nombre: estado.yo.nombre, apellidos: estado.yo.apellidos, rol: estado.yo.rol }, 'w-9 h-9 text-xs');
-  });
+  $$('.nombre-sesion').forEach((e) => { e.textContent = `${p.nombre} ${p.apellidos || ''}`.trim(); });
+  $$('.avatar-sesion').forEach((e) => { e.innerHTML = avatar(datosAvatar, 'w-9 h-9 text-xs'); });
+  $$('.avatar-sesion-mini').forEach((e) => { e.innerHTML = avatar(datosAvatar, 'w-8 h-8 text-[10px]'); });
 }
 
 function irA(vista) {
@@ -361,6 +431,7 @@ $$('.btn-nuevo-prestamo').forEach((b) => b.addEventListener('click', () => { irA
 async function arrancarApp() {
   $('#pantalla-acceso').classList.add('hidden');
   $('#aplicacion').classList.remove('hidden');
+  estado.perfil = await api('GET', '/api/perfil');
   await cargarTodo();
   pintarNavegacion();
   const inicial = location.hash.slice(1);
@@ -371,10 +442,11 @@ async function arrancarApp() {
 // ───────────────────────── Carga de datos ─────────────────────────
 async function cargarTodo() {
   if (estado.sesion.rol === 'admin') {
-    const [stats, libros, usuarios, prestamos] = await Promise.all([
+    const [stats, libros, usuarios, prestamos, movimientos] = await Promise.all([
       api('GET', '/api/stats'), api('GET', '/api/libros'), api('GET', '/api/usuarios'), api('GET', '/api/prestamos'),
+      api('GET', '/api/movimientos?limite=400'),
     ]);
-    Object.assign(estado, { stats, libros, usuarios, prestamos });
+    Object.assign(estado, { stats, libros, usuarios, prestamos, movimientos });
     for (const tipo of ['usuario', 'libro']) {
       const sel = estado.seleccion[tipo];
       if (sel) estado.seleccion[tipo] = (tipo === 'usuario' ? usuarios : libros).find((x) => x.id === sel.id) || null;
@@ -384,6 +456,7 @@ async function cargarTodo() {
     pintarLibros();
     pintarUsuarios();
     pintarMostrador();
+    pintarActividad();
     const r = stats.prestamos.retrasados || 0;
     $$('[data-insignia="retrasos"]').forEach((b) => { b.textContent = r; b.classList.toggle('hidden', !r); });
   } else {
@@ -469,6 +542,9 @@ function pintarPanel() {
       <span class="w-5 text-right text-t3 tabular-nums text-xs">${c.n}</span>
     </button>`).join('');
 
+  $('#panel-movimientos').innerHTML = s.movimientos.map((m) => filaMovimiento(m, true)).join('')
+    || '<li class="py-4 text-sm text-t3">Aún no hay movimientos</li>';
+
   const r = s.reglas;
   const regla = (ic, texto) => `<li class="flex gap-3 items-start"><span class="text-t3 mt-0.5">${icono(ic, 'w-4 h-4')}</span><span>${texto}</span></li>`;
   $('#reglas-box').innerHTML = `
@@ -497,15 +573,17 @@ function pintarSolicitudes(selector) {
     <ul class="divide-y divide-tinte/[0.06]">${lista.length ? lista.map((s) => {
       const libro = estado.libros.find((l) => l.id === s.libro_id) || s;
       const hay = s.ejemplares_disponibles > 0;
-      return `<li class="py-3 flex items-center gap-3">
+      return `<li class="py-3 flex flex-wrap items-center gap-x-3 gap-y-2">
         <button data-ficha-libro="${s.libro_id}">${portada(libro, 'w-8 h-11')}</button>
-        <div class="flex-1 min-w-0">
+        <div class="flex-1 min-w-[150px]">
           <p class="font-medium truncate">${esc(s.titulo)}</p>
-          <p class="text-xs text-t3 truncate">${esc(s.usuario)} · ${esc(s.curso || s.rol)} · ${haceCuanto(s.creada_en)}</p>
+          <p class="text-xs text-t3 truncate">${esc(s.usuario)} · ${esc(s.curso || s.rol)} · ${fmtFechaHora(s.creada_en)}</p>
         </div>
-        ${hay ? '' : insignia('Sin stock', 'naranja', 'reloj')}
-        <button class="btn-atender btn-verde" data-id="${s.id}" ${hay ? '' : 'disabled title="No hay ejemplares disponibles"'}>${icono('check', 'w-3.5 h-3.5')}Prestar</button>
-        <button class="btn-rechazar btn-icono-rojo w-7 h-7" data-id="${s.id}" title="Rechazar" aria-label="Rechazar">${icono('cerrar', 'w-3.5 h-3.5')}</button>
+        <div class="flex items-center gap-2 ml-auto">
+          ${hay ? '' : insignia('Sin stock', 'naranja', 'reloj')}
+          <button class="btn-atender btn-verde" data-id="${s.id}" ${hay ? '' : 'disabled title="No hay ejemplares disponibles"'}>${icono('check', 'w-3.5 h-3.5')}Prestar</button>
+          <button class="btn-rechazar btn-icono-rojo w-7 h-7" data-id="${s.id}" title="Rechazar" aria-label="Rechazar">${icono('cerrar', 'w-3.5 h-3.5')}</button>
+        </div>
       </li>`;
     }).join('') : `<li class="py-6 text-sm text-t3 flex items-center gap-2">${icono('checkCirculo', 'w-4 h-4 text-ios-green')}No hay peticiones pendientes</li>`}</ul>`;
 }
@@ -556,13 +634,13 @@ function pintarPrestamos() {
     return `<tr class="hover:bg-tinte/[0.025] transition ${p.estado === 'retrasado' ? 'bg-ios-red/[0.04]' : ''}">
       <td class="px-4 py-3"><div class="flex items-center gap-3 cursor-pointer" data-ficha-libro="${p.libro_id}">${portada(libro, 'w-8 h-11')}
         <div class="min-w-0"><p class="font-medium truncate max-w-[200px] hover:text-ios-blue transition">${esc(p.titulo)}</p><p class="text-xs text-t3">${esc(p.autor)}</p></div></div></td>
-      <td class="px-4 py-3 min-w-[160px]"><button class="text-left" data-ficha-usuario="${p.usuario_id}"><p class="hover:text-ios-blue transition">${esc(p.usuario)}</p><p class="text-xs text-t3">${esc(p.curso || '')}</p></button></td>
-      <td class="px-4 py-3 whitespace-nowrap text-t3 hidden xl:table-cell tabular-nums">${fmtFecha(p.fecha_prestamo)}</td>
-      <td class="px-4 py-3 whitespace-nowrap tabular-nums ${p.estado === 'retrasado' ? 'text-ios-red' : 'text-t2'}">${fmtFecha(p.fecha_limite)}
+      <td class="c-lector px-4 py-3 min-w-[160px]"><button class="text-left" data-ficha-usuario="${p.usuario_id}"><p class="hover:text-ios-blue transition">${esc(p.usuario)}</p><p class="text-xs text-t3">${esc(p.curso || '')}</p></button></td>
+      <td class="px-4 py-3 whitespace-nowrap text-t3 hidden xl:table-cell tabular-nums">${p.prestado_en ? fmtFechaHora(p.prestado_en) : fmtFecha(p.fecha_prestamo)}</td>
+      <td class="c-limite px-4 py-3 whitespace-nowrap tabular-nums ${p.estado === 'retrasado' ? 'text-ios-red' : 'text-t2'}">${fmtFecha(p.fecha_limite)}
         ${p.renovaciones ? `<span class="text-[11px] text-t3 ml-1" title="Renovaciones">${icono('renovar', 'w-3 h-3 inline -mt-0.5')} ${p.renovaciones}</span>` : ''}
-        ${!abierto ? `<p class="text-xs text-t3">Devuelto ${fmtFecha(p.fecha_devolucion)}</p>` : ''}</td>
-      <td class="px-4 py-3">${ESTADO_PRESTAMO[p.estado](p)}</td>
-      <td class="px-4 py-3 text-right whitespace-nowrap">${abierto ? `
+        ${!abierto ? `<p class="text-xs text-t3">Devuelto ${p.devuelto_en ? fmtFechaHora(p.devuelto_en) : fmtFecha(p.fecha_devolucion)}</p>` : `<p class="text-xs text-t3 xl:hidden">Prestado ${p.prestado_en ? fmtFechaHora(p.prestado_en) : fmtFecha(p.fecha_prestamo)}</p>`}</td>
+      <td class="c-estado px-4 py-3">${ESTADO_PRESTAMO[p.estado](p)}</td>
+      <td class="c-acciones px-4 py-3 text-right whitespace-nowrap">${abierto ? `
         <button class="btn-renovar btn-mini" data-id="${p.id}" ${noRenovable ? 'disabled' : ''}
           title="${p.estado === 'retrasado' ? 'No se puede renovar con retraso' : `Renovaciones: ${p.renovaciones}/${maxRen}`}">${icono('renovar', 'w-3.5 h-3.5')}Renovar</button>
         <button class="btn-devolver btn-verde ml-1" data-id="${p.id}">${icono('devolver', 'w-3.5 h-3.5')}Devolver</button>` : ''}</td>
@@ -951,6 +1029,10 @@ function abrirModalUsuario(u = null) {
   $('#titulo-modal-usuario').textContent = u ? 'Editar lector' : 'Nuevo lector';
   formUsuario.id.value = u?.id || '';
   if (u) for (const k of ['nombre', 'apellidos', 'email', 'curso', 'estado']) formUsuario[k].value = u[k] ?? '';
+  formUsuario.password.value = '';
+  $('#label-password-usuario').textContent = u ? 'Nueva contraseña (opcional)' : 'Contraseña inicial';
+  formUsuario.password.placeholder = u ? 'Déjalo vacío para no cambiarla' : '8+ caracteres, letras y números';
+  formUsuario.password.required = !u;
   $(`input[name=rol][value=${u?.rol || 'alumno'}]`, formUsuario).checked = true;
   pintarSelectorRol();
   $('#modal-usuario').showModal();
@@ -963,6 +1045,7 @@ formUsuario.addEventListener('submit', async (e) => {
   const datos = Object.fromEntries(new FormData(formUsuario));
   const id = datos.id;
   delete datos.id;
+  if (!datos.password) delete datos.password;
   try {
     const u = await api(id ? 'PUT' : 'POST', id ? `/api/usuarios/${id}` : '/api/usuarios', datos);
     $('#modal-usuario').close();
@@ -1042,6 +1125,7 @@ function pintarInicioLector() {
         <div class="flex-1 min-w-0 flex flex-col">
           <h3 class="font-semibold tracking-tight leading-snug line-clamp-2">${esc(p.titulo)}</h3>
           <p class="text-[13px] text-t3 truncate">${esc(p.autor)}</p>
+          <p class="text-[11px] text-t3 mt-0.5">Lo cogiste el ${p.prestado_en ? fmtFechaHora(p.prestado_en, { day: 'numeric', month: 'long' }) : fmtFecha(p.fecha_prestamo)}</p>
           <div class="flex items-center gap-3 mt-3">${anillo(p)}
             <div class="text-xs text-t3 leading-relaxed">Devolver antes del<br><b class="text-t1 font-medium text-[13px]">${fmtFecha(p.fecha_limite, { weekday: 'short', day: 'numeric', month: 'long' })}</b></div></div>
           <div class="mt-auto pt-3 flex items-center gap-2">
@@ -1073,7 +1157,7 @@ function pintarInicioLector() {
       return `<div class="p-4 flex items-center gap-4">
         <button data-ficha-libro="${s.libro_id}">${portada(libro, 'w-10 h-14')}</button>
         <div class="flex-1 min-w-0"><p class="font-medium truncate">${esc(s.titulo)}</p>
-          <p class="text-xs text-t3 mb-1.5">Pedido ${haceCuanto(s.creada_en)}${s.motivo && s.estado !== 'pendiente' ? ` · ${esc(s.motivo)}` : ''}</p>${estadoTxt}</div>
+          <p class="text-xs text-t3 mb-1.5">Pedido ${haceCuanto(s.creada_en)} · ${fmtFechaHora(s.creada_en)}${s.motivo && s.estado !== 'pendiente' ? ` · ${esc(s.motivo)}` : ''}</p>${estadoTxt}</div>
         ${s.estado === 'pendiente' ? `<button class="btn-cancelar-peticion btn-mini" data-id="${s.id}">Cancelar</button>` : ''}
       </div>`;
     }).join('')}</div>` : '';
@@ -1153,10 +1237,12 @@ function pintarHistorial() {
     return `<div class="p-4 flex items-center gap-4">
       <button data-ficha-libro="${p.libro_id}">${portada(libro, 'w-10 h-14')}</button>
       <div class="flex-1 min-w-0"><p class="font-medium truncate">${esc(p.titulo)}</p>
-        <p class="text-xs text-t3">${esc(p.autor)} · ${fmtFecha(p.fecha_prestamo)} — ${p.fecha_devolucion ? fmtFecha(p.fecha_devolucion) : 'ahora'}</p></div>
+        <p class="text-xs text-t3">${esc(p.autor)}</p>
+        <p class="text-xs text-t3">${p.prestado_en ? fmtFechaHora(p.prestado_en) : fmtFecha(p.fecha_prestamo)} — ${p.devuelto_en ? fmtFechaHora(p.devuelto_en) : p.fecha_devolucion ? fmtFecha(p.fecha_devolucion) : 'ahora'}</p></div>
       ${ESTADO_PRESTAMO[p.estado](p)}
     </div>`;
   }).join('') : `<p class="p-10 text-center text-t3">Aún no has leído nada con nosotros</p>`;
+  $('#historial-actividad').innerHTML = lineaTiempo(yo.movimientos, false) || '<p class="p-8 text-center text-t3 text-sm">Sin actividad todavía</p>';
 }
 
 document.addEventListener('click', async (e) => {
@@ -1192,12 +1278,12 @@ function cabeceraFicha(libro, contenido) {
 }
 
 const tablaHistorial = (prestamos) => (prestamos.length ? `
-  <div class="overflow-auto max-h-72 scroll-fino rounded-2xl ring-1 ring-inset ring-tinte/[0.08]"><table class="w-full text-sm">
-    <thead class="sticky top-0 bg-modal"><tr><th class="th">Lector</th><th class="th">Prestado</th><th class="th">Límite</th><th class="th">Estado</th><th class="th"></th></tr></thead>
+  <div class="contenedor-tabla overflow-auto max-h-72 scroll-fino rounded-2xl ring-1 ring-inset ring-tinte/[0.08]"><table class="tabla-adaptable w-full text-sm">
+    <thead class="sticky top-0 bg-modal"><tr><th class="th">Lector</th><th class="th">Prestado</th><th class="th">Devolución</th><th class="th">Estado</th><th class="th"></th></tr></thead>
     <tbody class="divide-y divide-tinte/[0.05]">${prestamos.map((p) => `<tr>
       <td class="px-4 py-2.5">${esc(p.usuario)}</td>
-      <td class="px-4 py-2.5 whitespace-nowrap text-t3 tabular-nums">${fmtFecha(p.fecha_prestamo)}</td>
-      <td class="px-4 py-2.5 whitespace-nowrap text-t3 tabular-nums">${fmtFecha(p.fecha_limite)}</td>
+      <td class="px-4 py-2.5 whitespace-nowrap text-t3 tabular-nums">${p.prestado_en ? fmtFechaHora(p.prestado_en) : fmtFecha(p.fecha_prestamo)}</td>
+      <td class="px-4 py-2.5 whitespace-nowrap text-t3 tabular-nums">${p.devuelto_en ? `Devuelto ${fmtFechaHora(p.devuelto_en)}` : `Límite ${fmtFecha(p.fecha_limite)}`}</td>
       <td class="px-4 py-2.5">${ESTADO_PRESTAMO[p.estado](p)}</td>
       <td class="px-4 py-2.5 text-right">${p.estado !== 'devuelto' ? `<button class="btn-devolver btn-verde" data-id="${p.id}">${icono('devolver', 'w-3.5 h-3.5')}Devolver</button>` : ''}</td>
     </tr>`).join('')}</tbody></table></div>` : '<p class="text-sm text-t3 py-8 text-center">Sin préstamos todavía</p>');
@@ -1254,7 +1340,7 @@ async function fichaUsuario(id) {
       return `<div class="py-3 flex items-center gap-3">
         <button data-ficha-libro="${p.libro_id}">${portada(libro, 'w-8 h-11')}</button>
         <div class="flex-1 min-w-0"><p class="font-medium truncate">${esc(p.titulo)}</p>
-          <p class="text-xs text-t3">${fmtFecha(p.fecha_prestamo)} — ${p.fecha_devolucion ? fmtFecha(p.fecha_devolucion) : `límite ${fmtFecha(p.fecha_limite)}`}</p></div>
+          <p class="text-xs text-t3">${p.prestado_en ? fmtFechaHora(p.prestado_en) : fmtFecha(p.fecha_prestamo)} — ${p.devuelto_en ? fmtFechaHora(p.devuelto_en) : p.fecha_devolucion ? fmtFecha(p.fecha_devolucion) : `límite ${fmtFecha(p.fecha_limite)}`}</p></div>
         ${ESTADO_PRESTAMO[p.estado](p)}
         ${p.estado !== 'devuelto' ? `<button class="btn-devolver btn-verde" data-id="${p.id}">${icono('devolver', 'w-3.5 h-3.5')}Devolver</button>` : ''}
       </div>`;
@@ -1291,6 +1377,156 @@ $$('dialog').forEach((d) => {
   d.addEventListener('click', (e) => { if (e.target === d) d.close(); });
 });
 
+// ════════════════════════════════ MOVIMIENTOS Y ACTIVIDAD ════════════════════════════════
+const TIPOS_MOVIMIENTO = {
+  prestamo: ['intercambio', 'azul', 'Préstamo'],
+  devolucion: ['devolver', 'verde', 'Devolución'],
+  renovacion: ['renovar', 'morado', 'Renovación'],
+  solicitud: ['marcador', 'celeste', 'Petición'],
+  solicitud_atendida: ['check', 'verde', 'Petición atendida'],
+  solicitud_rechazada: ['cerrar', 'rojo', 'Petición rechazada'],
+  solicitud_cancelada: ['cerrar', 'gris', 'Petición cancelada'],
+  libro_alta: ['mas', 'azul', 'Alta de libro'],
+  libro_edicion: ['lapiz', 'gris', 'Libro editado'],
+  libro_baja: ['papelera', 'rojo', 'Baja de libro'],
+  lector_alta: ['usuarioMas', 'morado', 'Alta de lector'],
+  lector_edicion: ['lapiz', 'gris', 'Lector editado'],
+  lector_baja: ['archivo', 'rojo', 'Baja de lector'],
+  registro: ['usuarioMas', 'verde', 'Nueva cuenta'],
+};
+
+function filaMovimiento(m, compacta = false) {
+  const [ic, tono] = TIPOS_MOVIMIENTO[m.tipo] || ['info', 'gris'];
+  const libro = m.libro_id ? (estado.libros.find((l) => l.id === m.libro_id) || { titulo: m.titulo, portada: m.portada }) : null;
+  return `<li class="flex items-center gap-3 py-2.5 ${compacta ? 'border-b border-tinte/[0.05] last:border-0' : ''}">
+    <span class="w-12 shrink-0 text-right text-xs tabular-nums text-t3">${compacta ? fmtFecha(m.creado_en) : ''}<b class="block text-t1 font-medium text-[13px]">${fmtHora(m.creado_en)}</b></span>
+    <span class="w-8 h-8 shrink-0 rounded-full grid place-items-center ring-1 ring-inset ${TONOS[tono]}">${icono(ic, 'w-4 h-4')}</span>
+    <div class="flex-1 min-w-0">
+      <p class="text-sm leading-snug">${esc(m.detalle)}</p>
+      <p class="text-[11px] text-t3 mt-0.5">${esc((TIPOS_MOVIMIENTO[m.tipo] || [])[2] || m.tipo)}${m.actor ? ` · por ${esc(m.actor)}` : ''}</p>
+    </div>
+    ${libro?.titulo ? `<button class="shrink-0" data-ficha-libro="${m.libro_id}" aria-label="Ver libro">${portada(libro, 'w-7 h-10')}</button>` : ''}
+  </li>`;
+}
+
+// Agrupa por día: "Hoy", "Ayer", "lunes, 3 de noviembre"
+function lineaTiempo(movimientos, conTarjeta = true) {
+  if (!movimientos.length) return '';
+  const grupos = new Map();
+  for (const m of movimientos) {
+    const dia = m.creado_en.slice(0, 10);
+    if (!grupos.has(dia)) grupos.set(dia, []);
+    grupos.get(dia).push(m);
+  }
+  const titulo = (dia) => {
+    const d = diasEntre(dia, hoyISO());
+    if (d === 0) return 'Hoy';
+    if (d === 1) return 'Ayer';
+    return new Date(`${dia}T00:00:00`).toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
+  };
+  return [...grupos].map(([dia, lista]) => `
+    <section>
+      <h3 class="etiqueta first-letter:uppercase px-1 ${conTarjeta ? 'mb-2' : 'mt-3 mb-1'}">${titulo(dia)} <span class="normal-case tracking-normal text-t4">· ${plural(lista.length, 'movimiento', 'movimientos')}</span></h3>
+      <ul class="${conTarjeta ? 'card px-4 py-1 divide-y divide-tinte/[0.05]' : 'divide-y divide-tinte/[0.05] px-2'}">${lista.map((m) => filaMovimiento(m)).join('')}</ul>
+    </section>`).join('');
+}
+
+function pintarActividad() {
+  const q = $('#buscar-actividad').value;
+  const grupos = {
+    prestamos: ['prestamo', 'renovacion'], devoluciones: ['devolucion'],
+    peticiones: ['solicitud', 'solicitud_atendida', 'solicitud_rechazada', 'solicitud_cancelada'],
+    catalogo: ['libro_alta', 'libro_edicion', 'libro_baja'], lectores: ['lector_alta', 'lector_edicion', 'lector_baja', 'registro'],
+  };
+  const lista = estado.movimientos.filter((m) =>
+    (!estado.grupoActividad || grupos[estado.grupoActividad].includes(m.tipo)) &&
+    (!q || coincide(`${m.detalle} ${m.actor || ''}`, q)));
+  $('#linea-tiempo').innerHTML = lineaTiempo(lista)
+    || `<div class="card py-16 text-center text-t3">${icono('historial', 'w-6 h-6 mx-auto mb-3 text-t4')}No hay movimientos que coincidan</div>`;
+}
+$('#buscar-actividad').addEventListener('input', pintarActividad);
+$$('#filtro-actividad .seg').forEach((b) => b.addEventListener('click', () => {
+  estado.grupoActividad = b.dataset.grupo;
+  $$('#filtro-actividad .seg').forEach((x) => x.classList.toggle('activa', x === b));
+  pintarActividad();
+}));
+
+// ════════════════════════════════ MI PERFIL ════════════════════════════════
+function pintarPerfil() {
+  const p = estado.perfil;
+  const admin = estado.sesion.rol === 'admin';
+  $('#perfil-foto').innerHTML = avatar({ ...p, rol: admin ? 'admin' : p.rol }, 'w-24 h-24 text-3xl');
+  $('#perfil-nombre').textContent = `${p.nombre} ${p.apellidos || ''}`.trim();
+  $('#perfil-email').textContent = `${p.email} · ${admin ? 'Personal de biblioteca' : p.rol === 'profesor' ? 'Profesor' : 'Alumno'}`;
+  $('#perfil-quitar-foto').classList.toggle('hidden', !p.foto);
+  const f = $('#form-perfil');
+  f.nombre.value = p.nombre;
+  f.apellidos.value = p.apellidos || '';
+  f.curso.value = p.curso || '';
+  $('#perfil-curso-caja').classList.toggle('hidden', admin);
+  $('#perfil-label-curso').textContent = p.rol === 'profesor' ? 'Departamento' : 'Curso';
+}
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('.btn-perfil')) return;
+  pintarPerfil();
+  $('#form-password').reset();
+  $('#modal-perfil').showModal();
+});
+
+async function perfilActualizado(p, mensaje) {
+  estado.perfil = p;
+  pintarPerfil();
+  pintarSesion();
+  if (mensaje) toast(mensaje);
+  await cargarTodo().catch(() => {});
+}
+
+$('#form-perfil').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  try {
+    const p = await api('PUT', '/api/perfil', Object.fromEntries(new FormData(e.target)));
+    estado.sesion.nombre = `${p.nombre} ${p.apellidos || ''}`.trim();
+    guardar('scriptorium.sesion', JSON.stringify(estado.sesion));
+    await perfilActualizado(p, 'Perfil actualizado');
+  } catch (err) { toast(err.message, 'error'); }
+});
+
+$('#form-password').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  try {
+    await api('POST', '/api/perfil/password', Object.fromEntries(new FormData(e.target)));
+    e.target.reset();
+    toast('Contraseña actualizada');
+  } catch (err) { toast(err.message, 'error'); }
+});
+
+// Foto de perfil: se recorta cuadrada y se reduce en el navegador antes de subirla (pocos KB)
+async function prepararFoto(archivo) {
+  if (!archivo.type.startsWith('image/')) throw new Error('Elige un archivo de imagen');
+  if (archivo.size > 15 * 1024 * 1024) throw new Error('La imagen es demasiado grande');
+  const bitmap = await createImageBitmap(archivo);
+  const lado = Math.min(bitmap.width, bitmap.height);
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = 512;
+  canvas.getContext('2d').drawImage(bitmap, (bitmap.width - lado) / 2, (bitmap.height - lado) / 2, lado, lado, 0, 0, 512, 512);
+  return canvas.toDataURL('image/jpeg', 0.85);
+}
+async function subirFoto(archivo) {
+  if (!archivo) return;
+  try {
+    $('#perfil-foto').innerHTML = `<div class="w-24 h-24 rounded-full grid place-items-center bg-tinte/10">${icono('cargando', 'w-6 h-6 animate-spin text-t3')}</div>`;
+    const imagen = await prepararFoto(archivo);
+    await perfilActualizado(await api('POST', '/api/perfil/foto', { imagen }), 'Foto de perfil actualizada');
+  } catch (err) {
+    toast(err.message, 'error');
+    pintarPerfil();
+  }
+}
+['#perfil-archivo', '.perfil-archivo-alt'].forEach((sel) => $(sel).addEventListener('change', (e) => { subirFoto(e.target.files[0]); e.target.value = ''; }));
+$('#perfil-quitar-foto').addEventListener('click', async () => {
+  try { await perfilActualizado(await api('DELETE', '/api/perfil/foto'), 'Foto eliminada'); } catch (err) { toast(err.message, 'error'); }
+});
+
 // ───────────────────────── Tiempo real (SSE) ─────────────────────────
 let fuenteEventos = null;
 function conectarTiempoReal() {
@@ -1315,7 +1551,7 @@ function conectarTiempoReal() {
 // Atajo: «/» para buscar en la vista actual
 document.addEventListener('keydown', (e) => {
   if (e.key !== '/' || ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName) || $('dialog[open]')) return;
-  const campo = { prestamos: '#buscar-prestamos', libros: '#buscar-libros', usuarios: '#buscar-usuarios', explorar: '#buscar-explorar' }[estado.vista];
+  const campo = { prestamos: '#buscar-prestamos', libros: '#buscar-libros', usuarios: '#buscar-usuarios', explorar: '#buscar-explorar', actividad: '#buscar-actividad' }[estado.vista];
   if (campo) { e.preventDefault(); $(campo).focus(); }
 });
 

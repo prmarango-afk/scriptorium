@@ -2,18 +2,27 @@
 const path = require('node:path');
 const crypto = require('node:crypto');
 const express = require('express');
-const { abrir, transaccion, REGLAS, MAX_RENOVACIONES, MAX_SOLICITUDES } = require('./db');
+const fs = require('node:fs');
+const { abrir, transaccion, DATA_DIR, REGLAS, MAX_RENOVACIONES, MAX_SOLICITUDES } = require('./db');
 const { sembrar } = require('./seed');
 const v = require('./validacion');
+const auth = require('./auth');
+const { guardarPortadaRemota } = require('./portadas');
 
 const { error } = v;
-const ADMIN_PIN = process.env.ADMIN_PIN || '1234';
 const DURACION_SESION_MS = 12 * 60 * 60 * 1000;
+const CARPETA_PORTADAS = path.join(DATA_DIR, 'portadas');
+const CARPETA_FOTOS = path.join(DATA_DIR, 'fotos');
 
 function crearApp(db) {
   const app = express();
   app.disable('x-powered-by');
-  app.use(express.json({ limit: '100kb' }));
+  app.use(express.json({ limit: '3mb' })); // 3 MB por la foto de perfil (llega ya reducida desde el navegador)
+  // Portadas y fotos: nombres únicos por versión, así que se pueden cachear un año
+  const cacheLarga = { maxAge: '365d', immutable: true };
+  app.use('/portadas', express.static(path.join(__dirname, 'public', 'portadas'), cacheLarga));
+  app.use('/portadas', express.static(CARPETA_PORTADAS, cacheLarga));
+  app.use('/fotos', express.static(CARPETA_FOTOS, cacheLarga));
   app.use(express.static(path.join(__dirname, 'public')));
 
   const uno = (sql, ...p) => db.prepare(sql).get(...p);
@@ -45,7 +54,8 @@ function crearApp(db) {
   });
 
   // ───────────────────────── Sesiones y roles ─────────────────────────
-  // Dos roles: "admin" (personal de biblioteca, entra con PIN) y "lector" (alumno/profesor, entra con su email).
+  // Dos roles: "admin" (cuenta del personal de biblioteca) y "lector" (alumno/profesor).
+  // Todos entran con email y contraseña. Las sesiones son tokens aleatorios en memoria.
   const sesiones = new Map();
 
   app.use('/api', (req, res, next) => {
@@ -65,28 +75,51 @@ function crearApp(db) {
     if (req.sesion.rol !== 'lector') throw error(403, 'Esta sección es para lectores');
     next();
   };
+  const conSesion = (req, res, next) => {
+    if (!req.sesion) throw error(401, 'Inicia sesión para continuar');
+    next();
+  };
 
-  app.post('/api/sesion', (req, res) => {
-    const { tipo } = req.body || {};
-    let sesion;
-    if (tipo === 'admin') {
-      const pin = String(req.body.pin ?? '');
-      const esperado = Buffer.from(ADMIN_PIN);
-      const recibido = Buffer.from(pin.padEnd(esperado.length).slice(0, esperado.length));
-      if (pin.length !== ADMIN_PIN.length || !crypto.timingSafeEqual(esperado, recibido)) throw error(401, 'PIN incorrecto');
-      sesion = { rol: 'admin', nombre: 'Biblioteca' };
-    } else if (tipo === 'lector') {
-      const email = v.texto(req.body.email, 'email', { requerido: true }).toLowerCase();
-      const u = uno('SELECT id, nombre, apellidos, estado FROM usuarios WHERE email = ?', email);
-      if (!u) throw error(401, 'No hay ningún lector con ese email');
-      if (u.estado === 'baja') throw error(403, 'Tu cuenta está dada de baja. Pregunta en la biblioteca');
-      sesion = { rol: 'lector', usuario_id: u.id, nombre: `${u.nombre} ${u.apellidos}` };
-    } else {
-      throw error(400, 'Tipo de acceso no válido');
-    }
+  function crearSesion(res, sesion) {
     const token = crypto.randomBytes(24).toString('hex');
     sesiones.set(token, { ...sesion, expira: Date.now() + DURACION_SESION_MS });
     res.status(201).json({ token, ...sesion });
+  }
+
+  app.post('/api/sesion', (req, res) => {
+    const email = v.texto(req.body?.email, 'email', { requerido: true }).toLowerCase();
+    const password = String(req.body?.password ?? '');
+    const espera = auth.comprobarBloqueo(email);
+    if (espera) throw error(429, `Demasiados intentos fallidos. Espera ${espera} segundos`);
+
+    const staff = uno('SELECT id, nombre, apellidos, password_hash FROM personal WHERE email = ?', email);
+    const lector = staff ? null : uno('SELECT id, nombre, apellidos, estado, password_hash FROM usuarios WHERE email = ?', email);
+    const cuenta = staff || lector;
+    // Mismo mensaje si no existe o si la contraseña no coincide: no se revela qué emails están registrados
+    if (!cuenta || !auth.verificarPassword(password, cuenta.password_hash)) {
+      auth.anotarFallo(email);
+      throw error(401, 'Email o contraseña incorrectos');
+    }
+    if (lector?.estado === 'baja') throw error(403, 'Tu cuenta está dada de baja. Pregunta en la biblioteca');
+    auth.limpiarFallos(email);
+    const nombre = `${cuenta.nombre} ${cuenta.apellidos}`.trim();
+    crearSesion(res, staff
+      ? { rol: 'admin', personal_id: staff.id, nombre }
+      : { rol: 'lector', usuario_id: lector.id, nombre });
+  });
+
+  // Alta de lectores desde la pantalla de acceso
+  app.post('/api/registro', (req, res) => {
+    const d = v.usuario({ ...req.body, estado: 'activo' });
+    const password = v.password(req.body?.password);
+    if (uno('SELECT 1 FROM usuarios WHERE email = ?', d.email) || uno('SELECT 1 FROM personal WHERE email = ?', d.email)) {
+      throw error(409, 'Ya hay una cuenta con ese email. Inicia sesión');
+    }
+    const id = Number(ejecutar('INSERT INTO usuarios (nombre, apellidos, email, rol, curso, estado, password_hash) VALUES (?,?,?,?,?,?,?)',
+      ...nulos(d), auth.hashPassword(password)).lastInsertRowid);
+    const nombre = `${d.nombre} ${d.apellidos}`;
+    registrar('registro', `${nombre} crea su cuenta de ${d.rol}`, { usuarioId: id, actor: nombre });
+    crearSesion(res, { rol: 'lector', usuario_id: id, nombre });
   });
 
   app.get('/api/sesion', (req, res) => {
@@ -101,12 +134,106 @@ function crearApp(db) {
     res.json({ ok: true });
   });
 
-  // Lectores de demostración para la pantalla de acceso (solo con datos demo)
-  app.get('/api/demo/lectores', (req, res) => {
+  // Cuentas de demostración para la pantalla de acceso (solo con datos demo)
+  app.get('/api/demo/cuentas', (req, res) => {
     if (process.env.SEED === 'false') return res.json([]);
-    const consulta = (rol, n) => todos(`SELECT nombre, apellidos, email, rol, curso FROM usuarios
+    const lectores = (rol, n) => todos(`SELECT nombre, apellidos, email, rol, foto FROM usuarios
                                         WHERE estado = 'activo' AND rol = ? ORDER BY id LIMIT ?`, rol, n);
-    res.json([...consulta('alumno', 4), ...consulta('profesor', 2)]);
+    const staff = todos("SELECT nombre, apellidos, email, 'admin' AS rol, foto FROM personal ORDER BY id LIMIT 1");
+    res.json([...staff, ...lectores('alumno', 3), ...lectores('profesor', 2)]);
+  });
+
+  // ───────────────────────── Perfil (cualquier sesión) ─────────────────────────
+  const tablaPerfil = (req) => (req.sesion.rol === 'admin' ? 'personal' : 'usuarios');
+  const idPerfil = (req) => (req.sesion.rol === 'admin' ? req.sesion.personal_id : req.sesion.usuario_id);
+  const leerPerfil = (req) => {
+    const p = req.sesion.rol === 'admin'
+      ? uno("SELECT id, nombre, apellidos, email, foto, 'admin' AS rol, NULL AS curso, creado_en FROM personal WHERE id = ?", idPerfil(req))
+      : uno('SELECT id, nombre, apellidos, email, foto, rol, curso, estado, creado_en FROM usuarios WHERE id = ?', idPerfil(req));
+    if (!p) throw error(401, 'La cuenta ya no existe');
+    return p;
+  };
+
+  app.get('/api/perfil', conSesion, (req, res) => res.json(leerPerfil(req)));
+
+  app.put('/api/perfil', conSesion, (req, res) => {
+    const nombre = v.texto(req.body?.nombre, 'nombre', { requerido: true, max: 80 });
+    const apellidos = v.texto(req.body?.apellidos, 'apellidos', { requerido: req.sesion.rol !== 'admin', max: 120 }) || '';
+    if (req.sesion.rol === 'admin') {
+      ejecutar('UPDATE personal SET nombre = ?, apellidos = ? WHERE id = ?', nombre, apellidos, idPerfil(req));
+    } else {
+      const curso = v.texto(req.body?.curso, 'curso', { max: 40 });
+      ejecutar('UPDATE usuarios SET nombre = ?, apellidos = ?, curso = ? WHERE id = ?', nombre, apellidos, curso, idPerfil(req));
+    }
+    req.sesion.nombre = `${nombre} ${apellidos}`.trim();
+    res.json(leerPerfil(req));
+  });
+
+  app.post('/api/perfil/password', conSesion, (req, res) => {
+    const fila = uno(`SELECT password_hash FROM ${tablaPerfil(req)} WHERE id = ?`, idPerfil(req));
+    if (!auth.verificarPassword(req.body?.actual, fila?.password_hash)) throw error(400, 'La contraseña actual no es correcta');
+    const nueva = v.password(req.body?.nueva, 'nueva contraseña');
+    ejecutar(`UPDATE ${tablaPerfil(req)} SET password_hash = ? WHERE id = ?`, auth.hashPassword(nueva), idPerfil(req));
+    res.json({ ok: true });
+  });
+
+  // Foto de perfil: llega como data URL; se guarda recortada a 256x256 en WebP
+  app.post('/api/perfil/foto', conSesion, async (req, res) => {
+    const m = /^data:image\/(png|jpe?g|webp|gif|avif);base64,([A-Za-z0-9+/=]+)$/.exec(String(req.body?.imagen || ''));
+    if (!m) throw error(400, 'Formato de imagen no válido (usa JPG, PNG o WebP)');
+    const datos = Buffer.from(m[2], 'base64');
+    if (datos.length > 2 * 1024 * 1024) throw error(400, 'La imagen es demasiado grande (máximo 2 MB)');
+    const sharp = require('sharp');
+    fs.mkdirSync(CARPETA_FOTOS, { recursive: true });
+    const nombreArchivo = `${req.sesion.rol}-${idPerfil(req)}-${crypto.randomBytes(4).toString('hex')}.webp`;
+    try {
+      await sharp(datos).rotate().resize(256, 256, { fit: 'cover', position: 'attention' })
+        .webp({ quality: 78 }).toFile(path.join(CARPETA_FOTOS, nombreArchivo));
+    } catch {
+      throw error(400, 'No se ha podido leer la imagen');
+    }
+    const anterior = uno(`SELECT foto FROM ${tablaPerfil(req)} WHERE id = ?`, idPerfil(req))?.foto;
+    ejecutar(`UPDATE ${tablaPerfil(req)} SET foto = ? WHERE id = ?`, `/fotos/${nombreArchivo}`, idPerfil(req));
+    borrarFoto(anterior);
+    res.json(leerPerfil(req));
+  });
+
+  app.delete('/api/perfil/foto', conSesion, (req, res) => {
+    const anterior = uno(`SELECT foto FROM ${tablaPerfil(req)} WHERE id = ?`, idPerfil(req))?.foto;
+    ejecutar(`UPDATE ${tablaPerfil(req)} SET foto = NULL WHERE id = ?`, idPerfil(req));
+    borrarFoto(anterior);
+    res.json(leerPerfil(req));
+  });
+
+  function borrarFoto(ruta) {
+    if (!ruta?.startsWith('/fotos/')) return;
+    fs.rm(path.join(CARPETA_FOTOS, path.basename(ruta)), { force: true }, () => {});
+  }
+
+  // ───────────────────────── Registro de movimientos ─────────────────────────
+  function registrar(tipo, detalle, { libroId = null, usuarioId = null, actor = null } = {}) {
+    ejecutar('INSERT INTO movimientos (tipo, detalle, libro_id, usuario_id, actor) VALUES (?,?,?,?,?)',
+      tipo, detalle, libroId, usuarioId, actor);
+  }
+  const quien = (req) => req.sesion?.nombre || null;
+
+  const GRUPOS_MOVIMIENTOS = {
+    prestamos: ['prestamo', 'renovacion'],
+    devoluciones: ['devolucion'],
+    peticiones: ['solicitud', 'solicitud_atendida', 'solicitud_rechazada', 'solicitud_cancelada'],
+    catalogo: ['libro_alta', 'libro_edicion', 'libro_baja'],
+    lectores: ['lector_alta', 'lector_edicion', 'lector_baja', 'registro'],
+  };
+
+  app.get('/api/movimientos', soloAdmin, (req, res) => {
+    let sql = `SELECT m.*, l.titulo, l.portada, u.nombre || ' ' || u.apellidos AS usuario, u.foto, u.rol
+               FROM movimientos m LEFT JOIN libros l ON l.id = m.libro_id LEFT JOIN usuarios u ON u.id = m.usuario_id WHERE 1 = 1`;
+    const p = [];
+    const grupo = GRUPOS_MOVIMIENTOS[req.query.grupo];
+    if (grupo) { sql += ` AND m.tipo IN (${grupo.map(() => '?').join(',')})`; p.push(...grupo); }
+    if (req.query.q) { sql += ' AND (m.detalle LIKE ? OR m.actor LIKE ?)'; p.push(`%${req.query.q}%`, `%${req.query.q}%`); }
+    const limite = v.entero(req.query.limite, 'limite', { min: 1, max: 1000 }) || 300;
+    res.json(todos(`${sql} ORDER BY m.creado_en DESC, m.id DESC LIMIT ${limite}`, ...p));
   });
 
   // ───────────────────────── Salud ─────────────────────────
@@ -149,8 +276,16 @@ function crearApp(db) {
   });
 
   // ───────────────────────── Libros (gestión) ─────────────────────────
-  app.post('/api/libros', soloAdmin, (req, res) => {
+  // Si la portada es una URL externa, se descarga y se guarda optimizada en WebP
+  async function portadaOptimizada(d) {
+    if (!/^https?:\/\//i.test(d.portada || '')) return d.portada;
+    const local = await guardarPortadaRemota(d.portada, CARPETA_PORTADAS, `${d.isbn}-${crypto.randomBytes(3).toString('hex')}`);
+    return local || d.portada;
+  }
+
+  app.post('/api/libros', soloAdmin, async (req, res) => {
     const d = v.libro(req.body);
+    d.portada = await portadaOptimizada(d);
     const existente = uno('SELECT id, activo FROM libros WHERE isbn = ?', d.isbn);
     if (existente?.activo) throw error(409, `Ya existe un libro con el ISBN ${d.isbn}`);
     let idLibro;
@@ -166,12 +301,14 @@ function crearApp(db) {
                  ejemplares_totales, ejemplares_disponibles) VALUES (?,?,?,?,?,?,?,?,?)`,
         ...nulos(d), d.ejemplares_totales).lastInsertRowid);
     }
+    registrar('libro_alta', `«${d.titulo}» añadido al catálogo (${d.ejemplares_totales} ejemplares)`, { libroId: idLibro, actor: quien(req) });
     res.status(201).json(libroActivo(idLibro));
   });
 
-  app.put('/api/libros/:id', soloAdmin, (req, res) => {
+  app.put('/api/libros/:id', soloAdmin, async (req, res) => {
     const actual = libroActivo(v.id(req.params.id));
     const d = v.libro({ ...actual, ...req.body });
+    if (d.portada !== actual.portada) d.portada = await portadaOptimizada(d);
     const duplicado = uno('SELECT id FROM libros WHERE isbn = ? AND id <> ?', d.isbn, actual.id);
     if (duplicado) throw error(409, `Ya existe otro libro con el ISBN ${d.isbn}`);
     // Ajuste dinámico de stock: los ejemplares prestados no pueden desaparecer
@@ -181,6 +318,8 @@ function crearApp(db) {
     ejecutar(`UPDATE libros SET isbn=?, titulo=?, autor=?, editorial=?, anio=?, categoria=?, portada=?,
               ejemplares_totales=?, ejemplares_disponibles=? WHERE id=?`,
       ...nulos(d), d.ejemplares_totales - actual.prestados, actual.id);
+    const cambioStock = d.ejemplares_totales !== actual.ejemplares_totales ? ` (ejemplares: ${actual.ejemplares_totales} → ${d.ejemplares_totales})` : '';
+    registrar('libro_edicion', `«${d.titulo}» editado${cambioStock}`, { libroId: actual.id, actor: quien(req) });
     res.json(libroActivo(actual.id));
   });
 
@@ -193,9 +332,11 @@ function crearApp(db) {
     if (libro.veces_prestado > 0) {
       // Con historial: baja lógica para no perder el registro de préstamos
       ejecutar('UPDATE libros SET activo = 0 WHERE id = ?', libro.id);
+      registrar('libro_baja', `«${libro.titulo}» dado de baja del catálogo`, { libroId: libro.id, actor: quien(req) });
       return res.json({ ok: true, modo: 'baja', mensaje: `"${libro.titulo}" dado de baja (se conserva su historial)` });
     }
     ejecutar('DELETE FROM libros WHERE id = ?', libro.id);
+    registrar('libro_baja', `«${libro.titulo}» eliminado del catálogo`, { actor: quien(req) });
     res.json({ ok: true, modo: 'eliminado', mensaje: `"${libro.titulo}" eliminado del catálogo` });
   });
 
@@ -209,7 +350,8 @@ function crearApp(db) {
   });
 
   // ───────────────────────── Usuarios ─────────────────────────
-  const SQL_USUARIOS = `SELECT u.*,
+  const SQL_USUARIOS = `SELECT u.id, u.nombre, u.apellidos, u.email, u.rol, u.curso, u.estado, u.foto, u.creado_en,
+      (u.password_hash IS NOT NULL) AS tiene_password,
       (SELECT COUNT(*) FROM prestamos p WHERE p.usuario_id = u.id AND p.fecha_devolucion IS NULL) AS prestamos_activos,
       (SELECT COUNT(*) FROM v_prestamos p WHERE p.usuario_id = u.id AND p.estado = 'retrasado') AS prestamos_retrasados,
       (SELECT COUNT(*) FROM prestamos p WHERE p.usuario_id = u.id) AS prestamos_totales
@@ -243,9 +385,13 @@ function crearApp(db) {
 
   app.post('/api/usuarios', soloAdmin, (req, res) => {
     const d = v.usuario(req.body);
+    const password = req.body.password ? v.password(req.body.password) : null;
     if (uno('SELECT id FROM usuarios WHERE email = ?', d.email)) throw error(409, `Ya existe un usuario con el email ${d.email}`);
-    const r = ejecutar('INSERT INTO usuarios (nombre, apellidos, email, rol, curso, estado) VALUES (?,?,?,?,?,?)', ...nulos(d));
-    res.status(201).json(buscarUsuario(Number(r.lastInsertRowid)));
+    const r = ejecutar('INSERT INTO usuarios (nombre, apellidos, email, rol, curso, estado, password_hash) VALUES (?,?,?,?,?,?,?)',
+      ...nulos(d), password ? auth.hashPassword(password) : null);
+    const nuevo = buscarUsuario(Number(r.lastInsertRowid));
+    registrar('lector_alta', `Alta de ${d.nombre} ${d.apellidos} (${d.rol})`, { usuarioId: nuevo.id, actor: quien(req) });
+    res.status(201).json(nuevo);
   });
 
   app.put('/api/usuarios/:id', soloAdmin, (req, res) => {
@@ -257,8 +403,12 @@ function crearApp(db) {
     if (d.estado === 'baja' && actual.prestamos_activos > 0) {
       throw error(409, `No se puede dar de baja: tiene ${actual.prestamos_activos} préstamo(s) sin devolver`);
     }
+    const password = req.body.password ? v.password(req.body.password) : null;
     ejecutar('UPDATE usuarios SET nombre=?, apellidos=?, email=?, rol=?, curso=?, estado=? WHERE id=?', ...nulos(d), actual.id);
+    if (password) ejecutar('UPDATE usuarios SET password_hash = ? WHERE id = ?', auth.hashPassword(password), actual.id);
     if (d.estado === 'baja') cancelarSolicitudesDe(actual.id, 'Cuenta dada de baja');
+    const cambios = [actual.estado !== d.estado && `estado: ${d.estado}`, password && 'nueva contraseña'].filter(Boolean).join(', ');
+    registrar('lector_edicion', `Ficha de ${d.nombre} ${d.apellidos} actualizada${cambios ? ` (${cambios})` : ''}`, { usuarioId: actual.id, actor: quien(req) });
     res.json(buscarUsuario(actual.id));
   });
 
@@ -271,9 +421,12 @@ function crearApp(db) {
     if (u.prestamos_totales > 0) {
       ejecutar("UPDATE usuarios SET estado = 'baja' WHERE id = ?", u.id);
       cancelarSolicitudesDe(u.id, 'Cuenta dada de baja');
+      registrar('lector_baja', `${nombre} dado de baja`, { usuarioId: u.id, actor: quien(req) });
       return res.json({ ok: true, modo: 'baja', mensaje: `${nombre} pasa a estado "baja" (se conserva su historial)` });
     }
     ejecutar('DELETE FROM usuarios WHERE id = ?', u.id);
+    borrarFoto(u.foto);
+    registrar('lector_baja', `${nombre} eliminado`, { actor: quien(req) });
     res.json({ ok: true, modo: 'eliminado', mensaje: `${nombre} eliminado` });
   });
 
@@ -288,7 +441,7 @@ function crearApp(db) {
   };
 
   // Reglas de negocio de un préstamo nuevo. Se llama dentro de una transacción.
-  function crearPrestamo({ libroId, usuarioId, dias, notas }) {
+  function crearPrestamo({ libroId, usuarioId, dias, notas, actor }) {
     const u = buscarUsuario(usuarioId);
     const libro = libroActivo(libroId);
     const regla = REGLAS[u.rol];
@@ -313,11 +466,13 @@ function crearApp(db) {
                             VALUES (?, ?, date('now','localtime', ?), ?)`,
       libroId, usuarioId, `+${plazo} days`, notas ?? null).lastInsertRowid);
     // Si el lector tenía pedido este libro, la petición queda atendida
-    ejecutar("UPDATE solicitudes SET estado = 'atendida', resuelta_en = datetime('now','localtime') WHERE libro_id = ? AND usuario_id = ? AND estado = 'pendiente'", libroId, usuarioId);
+    const atendida = ejecutar("UPDATE solicitudes SET estado = 'atendida', resuelta_en = datetime('now','localtime') WHERE libro_id = ? AND usuario_id = ? AND estado = 'pendiente'", libroId, usuarioId);
+    registrar('prestamo', `«${libro.titulo}» prestado a ${nombre} durante ${plazo} días${atendida.changes ? ' (atendiendo su petición)' : ''}`,
+      { libroId, usuarioId, actor });
     return idPrestamo;
   }
 
-  function renovarPrestamo(idPrestamo) {
+  function renovarPrestamo(idPrestamo, actor) {
     const p = buscarPrestamo(idPrestamo);
     if (p.fecha_devolucion) throw error(409, 'No se puede renovar un préstamo ya devuelto');
     if (p.estado === 'retrasado') throw error(409, `No se puede renovar: lleva ${p.dias_retraso} día(s) de retraso. Hay que devolverlo`);
@@ -327,6 +482,8 @@ function crearApp(db) {
     }
     ejecutar('UPDATE prestamos SET fecha_limite = date(fecha_limite, ?), renovaciones = renovaciones + 1 WHERE id = ?',
       `+${REGLAS[p.rol].diasPrestamo} days`, idPrestamo);
+    const nueva = uno('SELECT fecha_limite FROM prestamos WHERE id = ?', idPrestamo).fecha_limite;
+    registrar('renovacion', `«${p.titulo}» renovado para ${p.usuario} hasta el ${nueva}`, { libroId: p.libro_id, usuarioId: p.usuario_id, actor });
   }
 
   app.get('/api/prestamos', soloAdmin, (req, res) => {
@@ -354,7 +511,7 @@ function crearApp(db) {
     const libroId = v.id(req.body.libro_id, 'libro');
     const usuarioId = v.id(req.body.usuario_id, 'usuario');
     const notas = v.texto(req.body.notas, 'notas', { max: 300 });
-    const nuevoId = transaccion(db, () => crearPrestamo({ libroId, usuarioId, dias: req.body.dias, notas }));
+    const nuevoId = transaccion(db, () => crearPrestamo({ libroId, usuarioId, dias: req.body.dias, notas, actor: quien(req) }));
     res.status(201).json(buscarPrestamo(nuevoId));
   });
 
@@ -363,21 +520,23 @@ function crearApp(db) {
     transaccion(db, () => {
       const p = buscarPrestamo(idPrestamo);
       if (p.fecha_devolucion) throw error(409, `Este préstamo ya se devolvió el ${p.fecha_devolucion}`);
-      ejecutar("UPDATE prestamos SET fecha_devolucion = date('now','localtime') WHERE id = ?", idPrestamo);
+      ejecutar("UPDATE prestamos SET fecha_devolucion = date('now','localtime'), devuelto_en = datetime('now','localtime') WHERE id = ?", idPrestamo);
       ejecutar('UPDATE libros SET ejemplares_disponibles = ejemplares_disponibles + 1 WHERE id = ?', p.libro_id);
+      registrar('devolucion', `${p.usuario} devuelve «${p.titulo}»${p.dias_retraso ? ` con ${p.dias_retraso} día(s) de retraso` : ''}`,
+        { libroId: p.libro_id, usuarioId: p.usuario_id, actor: quien(req) });
     });
     res.json(buscarPrestamo(idPrestamo));
   });
 
   app.post('/api/prestamos/:id/renovar', soloAdmin, (req, res) => {
     const idPrestamo = v.id(req.params.id);
-    transaccion(db, () => renovarPrestamo(idPrestamo));
+    transaccion(db, () => renovarPrestamo(idPrestamo, quien(req)));
     res.json(buscarPrestamo(idPrestamo));
   });
 
   // ───────────────────────── Peticiones de lectores ─────────────────────────
   const SQL_SOLICITUDES = `SELECT s.*, l.titulo, l.autor, l.isbn, l.portada, l.ejemplares_disponibles,
-      u.nombre || ' ' || u.apellidos AS usuario, u.rol, u.curso, u.email,
+      u.nombre || ' ' || u.apellidos AS usuario, u.rol, u.curso, u.email, u.foto,
       (SELECT COUNT(*) FROM solicitudes s2 WHERE s2.libro_id = s.libro_id AND s2.estado = 'pendiente' AND s2.id < s.id) AS posicion
     FROM solicitudes s JOIN libros l ON l.id = s.libro_id JOIN usuarios u ON u.id = s.usuario_id`;
 
@@ -395,7 +554,7 @@ function crearApp(db) {
   app.post('/api/solicitudes/:id/atender', soloAdmin, (req, res) => {
     const s = buscarSolicitud(v.id(req.params.id));
     if (s.estado !== 'pendiente') throw error(409, 'Esta petición ya está resuelta');
-    const idPrestamo = transaccion(db, () => crearPrestamo({ libroId: s.libro_id, usuarioId: s.usuario_id }));
+    const idPrestamo = transaccion(db, () => crearPrestamo({ libroId: s.libro_id, usuarioId: s.usuario_id, actor: quien(req) }));
     res.status(201).json(buscarPrestamo(idPrestamo));
   });
 
@@ -404,6 +563,7 @@ function crearApp(db) {
     if (s.estado !== 'pendiente') throw error(409, 'Esta petición ya está resuelta');
     const motivo = v.texto(req.body?.motivo, 'motivo', { max: 200 });
     ejecutar("UPDATE solicitudes SET estado = 'rechazada', resuelta_en = datetime('now','localtime'), motivo = ? WHERE id = ?", motivo, s.id);
+    registrar('solicitud_rechazada', `Petición de ${s.usuario} para «${s.titulo}» rechazada`, { libroId: s.libro_id, usuarioId: s.usuario_id, actor: quien(req) });
     res.json(buscarSolicitud(s.id));
   });
 
@@ -416,6 +576,8 @@ function crearApp(db) {
     u.solicitudes = todos(`${SQL_SOLICITUDES} WHERE s.usuario_id = ? AND (s.estado = 'pendiente' OR s.resuelta_en >= datetime('now','localtime','-7 days'))
                            ORDER BY s.estado = 'pendiente' DESC, s.id DESC`, u.id);
     // Recomendaciones: libros disponibles de las categorías que ya ha leído y que aún no ha leído
+    u.movimientos = todos(`SELECT m.*, l.titulo, l.portada FROM movimientos m LEFT JOIN libros l ON l.id = m.libro_id
+                           WHERE m.usuario_id = ? ORDER BY m.creado_en DESC, m.id DESC LIMIT 60`, u.id);
     u.recomendados = todos(`SELECT l.*, COUNT(p2.id) AS popularidad FROM libros l
         LEFT JOIN prestamos p2 ON p2.libro_id = l.id
         WHERE l.activo = 1 AND l.ejemplares_disponibles > 0
@@ -432,7 +594,7 @@ function crearApp(db) {
     transaccion(db, () => {
       const p = buscarPrestamo(idPrestamo);
       if (p.usuario_id !== req.sesion.usuario_id) throw error(403, 'Este préstamo no es tuyo');
-      renovarPrestamo(idPrestamo);
+      renovarPrestamo(idPrestamo, quien(req));
     });
     res.json(buscarPrestamo(idPrestamo));
   });
@@ -451,7 +613,10 @@ function crearApp(db) {
       }
       const pendientes = uno("SELECT COUNT(*) AS n FROM solicitudes WHERE usuario_id = ? AND estado = 'pendiente'", u.id).n;
       if (pendientes >= MAX_SOLICITUDES) throw error(409, `Solo puedes tener ${MAX_SOLICITUDES} peticiones a la vez`);
-      return Number(ejecutar('INSERT INTO solicitudes (libro_id, usuario_id) VALUES (?, ?)', libroId, u.id).lastInsertRowid);
+      const id = Number(ejecutar('INSERT INTO solicitudes (libro_id, usuario_id) VALUES (?, ?)', libroId, u.id).lastInsertRowid);
+      registrar('solicitud', `${u.nombre} ${u.apellidos} pide «${libro.titulo}»${libro.ejemplares_disponibles ? '' : ' (lista de espera)'}`,
+        { libroId, usuarioId: u.id, actor: quien(req) });
+      return id;
     });
     res.status(201).json(buscarSolicitud(idSolicitud));
   });
@@ -461,6 +626,7 @@ function crearApp(db) {
     if (s.usuario_id !== req.sesion.usuario_id) throw error(403, 'Esta petición no es tuya');
     if (s.estado !== 'pendiente') throw error(409, 'Esta petición ya está resuelta');
     ejecutar("UPDATE solicitudes SET estado = 'cancelada', resuelta_en = datetime('now','localtime'), motivo = 'Cancelada por el lector' WHERE id = ?", s.id);
+    registrar('solicitud_cancelada', `${s.usuario} cancela su petición de «${s.titulo}»`, { libroId: s.libro_id, usuarioId: s.usuario_id, actor: quien(req) });
     res.json({ ok: true });
   });
 
@@ -477,6 +643,8 @@ function crearApp(db) {
                       SUM(fecha_prestamo = date('now','localtime')) AS prestados_hoy,
                       COUNT(*) AS historico FROM v_prestamos`),
       solicitudes: todos(`${SQL_SOLICITUDES} WHERE s.estado = 'pendiente' ORDER BY s.id`),
+      movimientos: todos(`SELECT m.*, l.titulo, l.portada FROM movimientos m LEFT JOIN libros l ON l.id = m.libro_id
+                          ORDER BY m.creado_en DESC, m.id DESC LIMIT 7`),
       retrasados: todos("SELECT * FROM v_prestamos WHERE estado = 'retrasado' ORDER BY dias_retraso DESC LIMIT 10"),
       vencen_pronto: todos(`SELECT * FROM v_prestamos WHERE estado = 'activo'
                             AND fecha_limite <= date('now','localtime','+3 days') ORDER BY fecha_limite LIMIT 10`),

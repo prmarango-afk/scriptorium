@@ -5,7 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Scriptorium · Biblioteca escolar</title>
   <meta name="description" content="Scriptorium: la biblioteca del centro. Catálogo, lectores y préstamos." />
+  <meta name="color-scheme" content="dark light" />
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23111114'/%3E%3Cg fill='none' stroke='%23fff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round' transform='translate(4 4)'%3E%3Cpath d='M20.24 12.24a6 6 0 0 0-8.49-8.49L5 10.5V19h8.5z'/%3E%3Cpath d='M16 8 2 22'/%3E%3Cpath d='M17.5 15H9'/%3E%3C/g%3E%3C/svg%3E" />
+  <meta name="theme-color" content="#050507" />
   <script>
     // Tema antes de pintar nada (evita el destello): preferencia guardada o la del sistema
     (function () {
@@ -13,6 +15,7 @@
       try { t = localStorage.getItem('scriptorium.tema'); } catch (e) {}
       if (t !== 'claro' && t !== 'oscuro') t = matchMedia('(prefers-color-scheme: light)').matches ? 'claro' : 'oscuro';
       document.documentElement.dataset.tema = t;
+      document.querySelector('meta[name=theme-color]')?.setAttribute('content', t === 'claro' ? '#f2f2f7' : '#050507');
     })();
   </script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -113,6 +116,27 @@
     @keyframes bajar { from { transform: translateY(-50%); } to { transform: translateY(0); } }
     @media (prefers-reduced-motion: reduce) { .muro-col { animation: none; } }
 
+    /* Ningún hijo de una rejilla puede ensancharla (evita el scroll horizontal en móvil) */
+    .card, .grid > * { min-width: 0; }
+    html, body { overflow-x: clip; }
+
+    /* Tablas adaptables: si la tabla no cabe en su contenedor, cada fila pasa a ser una tarjeta */
+    .contenedor-tabla { container-type: inline-size; }
+    @container (max-width: 760px) {
+      .tabla-adaptable thead { display: none; }
+      .tabla-adaptable, .tabla-adaptable tbody { display: block; width: 100%; }
+      .tabla-adaptable tr { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 10px 12px; padding: 14px 16px; }
+      .tabla-adaptable td { display: block; padding: 0 !important; min-width: 0 !important; white-space: normal !important; }
+      .tabla-adaptable td.hidden { display: none; }
+      .tabla-adaptable td:first-child { grid-column: 1 / -1; }
+      .tabla-adaptable td:nth-child(odd):not(:first-child) { justify-self: end; text-align: right; }
+      .tabla-adaptable td[colspan] { grid-column: 1 / -1; text-align: center; }
+      .tabla-adaptable .c-lector { order: 1; } .tabla-adaptable .c-estado { order: 2; justify-self: end; }
+      .tabla-adaptable .c-limite { order: 3; justify-self: start; text-align: left; } .tabla-adaptable .c-acciones { order: 4; justify-self: end; }
+    }
+
+    #fuerza-password span { flex: 1; height: 4px; border-radius: 4px; background: rgb(var(--tinte) / .1); transition: background .2s; }
+
     /* Anillo de progreso del préstamo */
     .anillo { transform: rotate(-90deg); }
     .anillo circle { transition: stroke-dashoffset .6s cubic-bezier(.2,.8,.2,1); }
@@ -132,7 +156,7 @@
       .segmentado { @apply inline-flex p-1 rounded-full bg-tinte/[0.05] border border-tinte/10; }
       .seg { @apply px-3.5 py-1.5 rounded-full text-[13px] font-medium text-t3 transition hover:text-t1 whitespace-nowrap; }
       .seg.activa { @apply bg-modal text-t1 shadow-[0_1px_0_rgb(var(--tinte)/0.10)_inset,0_2px_8px_-2px_rgba(0,0,0,.35)]; }
-      .dock-btn { @apply relative flex flex-col items-center gap-1 w-[72px] py-2 rounded-2xl text-t3 transition hover:text-t1 active:scale-95; }
+      .dock-btn { @apply relative flex flex-col items-center gap-1 w-[60px] min-[400px]:w-[68px] sm:w-[72px] py-2 rounded-2xl text-t3 transition hover:text-t1 active:scale-95; }
       .dock-btn.activa { @apply bg-tinte/[0.08] text-ios-blue; }
       .lado-btn { @apply relative flex items-center gap-3 w-full px-3 py-2.5 rounded-xl text-sm font-medium text-t2 transition hover:bg-tinte/[0.05] hover:text-t1; }
       .lado-btn.activa { @apply bg-tinte/[0.08] text-t1 shadow-[inset_0_1px_0_rgb(var(--tinte)/0.08)]; }
@@ -163,26 +187,46 @@
       <!-- Muro en móvil: una fila de portadas -->
       <div id="muro-movil" class="lg:hidden flex gap-3 overflow-hidden -mx-5 px-5 mb-8 sin-scroll"></div>
 
-      <h1 class="text-[32px] font-semibold tracking-[-0.03em] leading-tight">Bienvenido</h1>
-      <p class="text-t3 mt-1 mb-6">¿Cómo quieres entrar?</p>
+      <h1 class="text-[32px] font-semibold tracking-[-0.03em] leading-tight" id="titulo-acceso">Bienvenido</h1>
+      <p class="text-t3 mt-1 mb-6" id="subtitulo-acceso">Entra con tu cuenta del centro.</p>
 
       <div class="segmentado w-full grid grid-cols-2 mb-5" id="selector-acceso">
-        <button class="seg activa flex items-center justify-center gap-2" data-acceso="lector"><i data-icono="libroAbierto" class="w-4 h-4"></i>Soy lector</button>
-        <button class="seg flex items-center justify-center gap-2" data-acceso="admin"><i data-icono="estanteria" class="w-4 h-4"></i>Biblioteca</button>
+        <button class="seg activa" data-acceso="entrar">Entrar</button>
+        <button class="seg" data-acceso="registro">Crear cuenta</button>
       </div>
 
-      <form id="form-acceso-lector" class="card p-5" autocomplete="off">
-        <label class="etiqueta" for="acceso-email">Email del centro</label>
-        <input id="acceso-email" type="email" required placeholder="nombre@alumnos.colegio.es" class="campo" />
-        <button class="btn-azul w-full py-2.5 mt-4" type="submit">Entrar<i data-icono="chevron" class="w-4 h-4"></i></button>
-        <div id="lectores-demo" class="mt-5 pt-4 border-t border-tinte/[0.08]"></div>
+      <form id="form-entrar" class="card p-5" autocomplete="on">
+        <label class="etiqueta" for="acceso-email">Email</label>
+        <input id="acceso-email" name="email" type="email" required autocomplete="username" placeholder="nombre@alumnos.colegio.es" class="campo" />
+        <label class="etiqueta mt-4" for="acceso-password">Contraseña</label>
+        <div class="relative">
+          <input id="acceso-password" name="password" type="password" required autocomplete="current-password" placeholder="Tu contraseña" class="campo pr-11" />
+          <button type="button" class="ver-password absolute right-1.5 top-1/2 -translate-y-1/2 btn-icono w-8 h-8" aria-label="Mostrar contraseña"><i data-icono="ojo" class="w-4 h-4"></i></button>
+        </div>
+        <button class="btn-azul w-full py-2.5 mt-5" type="submit">Entrar<i data-icono="chevron" class="w-4 h-4"></i></button>
+        <div id="cuentas-demo" class="mt-5 pt-4 border-t border-tinte/[0.08]"></div>
       </form>
 
-      <form id="form-acceso-admin" class="card p-5 hidden" autocomplete="off">
-        <label class="etiqueta" for="acceso-pin">PIN del personal</label>
-        <input id="acceso-pin" type="password" inputmode="numeric" maxlength="8" required placeholder="••••" class="campo text-center text-2xl tracking-[.6em] font-semibold" />
-        <button class="btn-azul w-full py-2.5 mt-4" type="submit">Entrar<i data-icono="chevron" class="w-4 h-4"></i></button>
-        <p class="text-xs text-t3 mt-4 flex items-center gap-2"><i data-icono="info" class="w-3.5 h-3.5"></i>PIN de la demo: <b class="text-t1 font-semibold">1234</b></p>
+      <form id="form-registro" class="card p-5 hidden" autocomplete="on">
+        <div class="segmentado w-full grid grid-cols-2 mb-4" id="registro-rol">
+          <label class="seg activa cursor-pointer flex items-center justify-center gap-2"><input type="radio" name="rol" value="alumno" class="sr-only" checked /><i data-icono="birrete" class="w-4 h-4"></i>Alumno</label>
+          <label class="seg cursor-pointer flex items-center justify-center gap-2"><input type="radio" name="rol" value="profesor" class="sr-only" /><i data-icono="maletin" class="w-4 h-4"></i>Profesor</label>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div><label class="etiqueta">Nombre</label><input name="nombre" required autocomplete="given-name" class="campo" /></div>
+          <div><label class="etiqueta">Apellidos</label><input name="apellidos" required autocomplete="family-name" class="campo" /></div>
+        </div>
+        <label class="etiqueta mt-3">Email del centro</label>
+        <input name="email" type="email" required autocomplete="email" placeholder="nombre@alumnos.colegio.es" class="campo" />
+        <label class="etiqueta mt-3" id="registro-label-curso">Curso</label>
+        <input name="curso" placeholder="2º ESO B" class="campo" />
+        <label class="etiqueta mt-3">Contraseña</label>
+        <div class="relative">
+          <input name="password" type="password" required minlength="8" autocomplete="new-password" placeholder="Mínimo 8 caracteres, letras y números" class="campo pr-11" />
+          <button type="button" class="ver-password absolute right-1.5 top-1/2 -translate-y-1/2 btn-icono w-8 h-8" aria-label="Mostrar contraseña"><i data-icono="ojo" class="w-4 h-4"></i></button>
+        </div>
+        <div class="flex gap-1 mt-2" id="fuerza-password"><span></span><span></span><span></span><span></span></div>
+        <button class="btn-azul w-full py-2.5 mt-5" type="submit">Crear mi cuenta<i data-icono="chevron" class="w-4 h-4"></i></button>
       </form>
       <p id="error-acceso" class="hidden mt-4 text-sm text-ios-red bg-ios-red/10 ring-1 ring-inset ring-ios-red/25 rounded-xl px-3.5 py-2.5"></p>
     </div>
@@ -208,9 +252,11 @@
           </div>
           <button class="btn-tema btn-icono" aria-label="Cambiar tema"></button>
         </div>
-        <div class="flex items-center gap-3 p-2 rounded-2xl bg-tinte/[0.04] ring-1 ring-inset ring-tinte/[0.06]">
-          <span class="avatar-sesion"></span>
-          <div class="min-w-0 flex-1 leading-tight"><p class="text-sm font-medium truncate nombre-sesion"></p><p class="text-[11px] text-t3 truncate rol-texto"></p></div>
+        <div class="flex items-center gap-2 p-2 rounded-2xl bg-tinte/[0.04] ring-1 ring-inset ring-tinte/[0.06]">
+          <button class="btn-perfil flex items-center gap-3 min-w-0 flex-1 text-left rounded-xl hover:bg-tinte/[0.04] transition" title="Mi perfil">
+            <span class="avatar-sesion"></span>
+            <span class="min-w-0 flex-1 leading-tight"><span class="block text-sm font-medium truncate nombre-sesion"></span><span class="block text-[11px] text-t3 truncate">Ver mi perfil</span></span>
+          </button>
           <button class="btn-salir btn-icono" aria-label="Cerrar sesión" title="Cerrar sesión"><i data-icono="salir" class="w-4 h-4"></i></button>
         </div>
       </div>
@@ -226,7 +272,7 @@
       </a>
       <div class="flex items-center gap-2">
         <button class="btn-tema btn-icono" aria-label="Cambiar tema"></button>
-        <button class="btn-salir btn-icono" aria-label="Cerrar sesión"><i data-icono="salir" class="w-4 h-4"></i></button>
+        <button class="btn-perfil rounded-full" aria-label="Mi perfil"><span class="avatar-sesion-mini"></span></button>
       </div>
     </div>
   </header>
@@ -286,7 +332,37 @@
             <div id="lista-categorias" class="grid sm:grid-cols-2 gap-x-8 gap-y-2.5"></div>
           </div>
           <div class="card p-5" id="reglas-box"></div>
+          <div class="lg:col-span-3 card p-5">
+            <div class="flex items-center justify-between mb-2">
+              <h2 class="titulo-seccion"><i data-icono="historial" class="w-4 h-4 text-t3"></i>Últimos movimientos</h2>
+              <button class="text-[13px] text-t3 hover:text-t1 inline-flex items-center gap-1" data-ir="actividad">Ver toda la actividad<i data-icono="chevron" class="w-3.5 h-3.5"></i></button>
+            </div>
+            <ul id="panel-movimientos"></ul>
+          </div>
         </div>
+      </section>
+
+      <!-- ─────────── ADMIN · ACTIVIDAD ─────────── -->
+      <section id="vista-actividad" class="vista">
+        <div class="mb-8">
+          <h1 class="titulo-vista">Actividad</h1>
+          <p class="text-t3 mt-1">Todos los movimientos de la biblioteca con su fecha y hora.</p>
+        </div>
+        <div class="flex flex-wrap gap-3 items-center mb-5">
+          <div class="segmentado max-w-full overflow-x-auto sin-scroll" id="filtro-actividad">
+            <button class="seg activa" data-grupo="">Todo</button>
+            <button class="seg" data-grupo="prestamos">Préstamos</button>
+            <button class="seg" data-grupo="devoluciones">Devoluciones</button>
+            <button class="seg" data-grupo="peticiones">Peticiones</button>
+            <button class="seg" data-grupo="catalogo">Catálogo</button>
+            <button class="seg" data-grupo="lectores">Lectores</button>
+          </div>
+          <label class="relative flex-1 min-w-[200px]">
+            <i data-icono="buscar" class="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-t3"></i>
+            <input type="search" id="buscar-actividad" placeholder="Buscar en la actividad" class="campo rounded-full pl-10 py-2" />
+          </label>
+        </div>
+        <div id="linea-tiempo" class="space-y-6"></div>
       </section>
 
       <!-- ─────────── ADMIN · PRÉSTAMOS ─────────── -->
@@ -322,8 +398,8 @@
               <input type="search" id="buscar-prestamos" placeholder="Buscar libro, lector o ISBN" class="campo rounded-full pl-10 py-2" />
             </label>
           </div>
-          <div class="overflow-x-auto scroll-fino">
-            <table class="w-full text-sm">
+          <div class="contenedor-tabla overflow-x-auto scroll-fino">
+            <table class="tabla-adaptable w-full text-sm">
               <thead><tr><th class="th">Libro</th><th class="th">Lector</th><th class="th hidden xl:table-cell">Prestado</th><th class="th">Devolver antes de</th><th class="th">Estado</th><th class="th text-right">Acciones</th></tr></thead>
               <tbody id="tabla-prestamos" class="divide-y divide-tinte/[0.05]"></tbody>
             </table>
@@ -369,8 +445,8 @@
             <select id="filtro-estado" class="campo w-auto rounded-full py-2 pr-8">
               <option value="">Cualquier estado</option><option value="activo">Activos</option><option value="suspendido">Suspendidos</option><option value="baja">De baja</option></select>
           </div>
-          <div class="overflow-x-auto scroll-fino">
-            <table class="w-full text-sm">
+          <div class="contenedor-tabla overflow-x-auto scroll-fino">
+            <table class="tabla-adaptable w-full text-sm">
               <thead><tr><th class="th">Lector</th><th class="th">Rol</th><th class="th">Estado</th><th class="th">Préstamos</th><th class="th text-right">Acciones</th></tr></thead>
               <tbody id="tabla-usuarios" class="divide-y divide-tinte/[0.05]"></tbody>
             </table>
@@ -407,6 +483,8 @@
         <div class="mb-8"><h1 class="titulo-vista">Mi historial</h1><p class="text-t3 mt-1" id="historial-resumen"></p></div>
         <div id="historial-stats" class="grid grid-cols-3 gap-3 sm:gap-4 mb-6"></div>
         <div id="historial-lista" class="card divide-y divide-tinte/[0.06] overflow-hidden"></div>
+        <h2 class="text-xl font-semibold tracking-tight mt-10 mb-4">Tu actividad</h2>
+        <div id="historial-actividad" class="card p-2 sm:p-3"></div>
       </section>
     </div>
   </main>
@@ -472,6 +550,8 @@
       <div><label class="etiqueta" id="label-curso">Curso</label><input name="curso" placeholder="2º ESO B" class="campo" /></div>
       <div><label class="etiqueta">Membresía</label>
         <select name="estado" class="campo"><option value="activo">Activa</option><option value="suspendido">Suspendida</option><option value="baja">Baja</option></select></div>
+      <div class="sm:col-span-2"><label class="etiqueta" id="label-password-usuario">Contraseña</label>
+        <input name="password" type="password" autocomplete="new-password" minlength="8" class="campo" /></div>
     </div>
     <p id="info-reglas-usuario" class="mt-4 text-xs text-t3 flex items-center gap-2"></p>
     <p class="error-form hidden mt-5 text-sm text-ios-red bg-ios-red/10 ring-1 ring-inset ring-ios-red/25 rounded-xl px-3.5 py-2.5"></p>
@@ -480,6 +560,45 @@
       <button type="submit" class="btn-primario">Guardar</button>
     </div>
   </form>
+</dialog>
+
+<!-- ─────────── Modal perfil ─────────── -->
+<dialog id="modal-perfil" class="glass-fuerte rounded-[26px] w-[min(520px,calc(100%-2rem))]">
+  <div class="p-6 max-h-[90vh] overflow-y-auto scroll-fino">
+    <div class="flex items-center justify-between mb-6">
+      <h2 class="text-xl font-semibold tracking-tight">Mi perfil</h2>
+      <button type="button" class="cerrar btn-icono" aria-label="Cerrar"><i data-icono="cerrar" class="w-4 h-4"></i></button>
+    </div>
+    <div class="flex flex-col items-center text-center mb-6">
+      <div class="relative">
+        <div id="perfil-foto"></div>
+        <label class="absolute -bottom-1 -right-1 btn-icono w-9 h-9 bg-modal cursor-pointer" title="Cambiar foto">
+          <i data-icono="camara" class="w-4 h-4"></i><input type="file" id="perfil-archivo" accept="image/*" class="sr-only" />
+        </label>
+      </div>
+      <p class="font-semibold text-lg mt-4" id="perfil-nombre"></p>
+      <p class="text-sm text-t3" id="perfil-email"></p>
+      <div class="flex gap-2 mt-3">
+        <label class="btn-mini cursor-pointer"><i data-icono="camara" class="w-3.5 h-3.5"></i>Subir foto<input type="file" accept="image/*" class="perfil-archivo-alt sr-only" /></label>
+        <button type="button" id="perfil-quitar-foto" class="btn-mini">Quitar foto</button>
+      </div>
+    </div>
+    <form id="form-perfil" class="space-y-4" autocomplete="off">
+      <div class="grid grid-cols-2 gap-3">
+        <div><label class="etiqueta">Nombre</label><input name="nombre" required class="campo" /></div>
+        <div><label class="etiqueta">Apellidos</label><input name="apellidos" class="campo" /></div>
+      </div>
+      <div id="perfil-curso-caja"><label class="etiqueta" id="perfil-label-curso">Curso</label><input name="curso" class="campo" /></div>
+      <button type="submit" class="btn-primario w-full py-2.5">Guardar cambios</button>
+    </form>
+    <form id="form-password" class="mt-6 pt-6 border-t border-tinte/[0.08] space-y-3" autocomplete="off">
+      <h3 class="titulo-seccion"><i data-icono="candado" class="w-4 h-4 text-t3"></i>Cambiar contraseña</h3>
+      <input name="actual" type="password" required autocomplete="current-password" placeholder="Contraseña actual" class="campo" />
+      <input name="nueva" type="password" required minlength="8" autocomplete="new-password" placeholder="Nueva contraseña (8+ caracteres, letras y números)" class="campo" />
+      <button type="submit" class="btn-cristal w-full py-2.5">Actualizar contraseña</button>
+    </form>
+    <button type="button" class="btn-salir w-full mt-6 py-2.5 rounded-full text-sm font-medium text-ios-red bg-ios-red/10 hover:bg-ios-red/15 transition flex items-center justify-center gap-2"><i data-icono="salir" class="w-4 h-4"></i>Cerrar sesión</button>
+  </div>
 </dialog>
 
 <!-- ─────────── Modal ficha (libro o lector) ─────────── -->

@@ -5,6 +5,8 @@ const path = require('node:path');
 const { DatabaseSync } = require('node:sqlite');
 
 const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'data', 'library.db');
+// Carpeta de datos subidos (fotos de perfil y portadas añadidas desde la app), junto a la base de datos
+const DATA_DIR = process.env.DATA_DIR || path.dirname(DB_PATH === ':memory:' ? path.join(__dirname, 'data', 'x') : DB_PATH);
 
 // Reglas de negocio configurables por rol
 const REGLAS = {
@@ -39,8 +41,33 @@ CREATE TABLE IF NOT EXISTS usuarios (
   rol        TEXT NOT NULL CHECK (rol IN ('alumno','profesor')),
   curso      TEXT,
   estado     TEXT NOT NULL DEFAULT 'activo' CHECK (estado IN ('activo','suspendido','baja')),
+  password_hash TEXT,
+  foto       TEXT,
   creado_en  TEXT NOT NULL DEFAULT (datetime('now','localtime'))
 );
+
+-- Cuentas del personal de biblioteca
+CREATE TABLE IF NOT EXISTS personal (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  nombre        TEXT NOT NULL,
+  apellidos     TEXT NOT NULL DEFAULT '',
+  email         TEXT NOT NULL UNIQUE COLLATE NOCASE,
+  password_hash TEXT NOT NULL,
+  foto          TEXT,
+  creado_en     TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+
+-- Registro de todos los movimientos con fecha y hora (préstamos, devoluciones, peticiones, altas...)
+CREATE TABLE IF NOT EXISTS movimientos (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  tipo        TEXT NOT NULL,
+  detalle     TEXT NOT NULL,
+  libro_id    INTEGER,
+  usuario_id  INTEGER,
+  actor       TEXT,
+  creado_en   TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+CREATE INDEX IF NOT EXISTS idx_movimientos_fecha ON movimientos(creado_en);
 
 CREATE TABLE IF NOT EXISTS prestamos (
   id               INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -49,6 +76,8 @@ CREATE TABLE IF NOT EXISTS prestamos (
   fecha_prestamo   TEXT    NOT NULL DEFAULT (date('now','localtime')),
   fecha_limite     TEXT    NOT NULL,
   fecha_devolucion TEXT,
+  prestado_en      TEXT    DEFAULT (datetime('now','localtime')),
+  devuelto_en      TEXT,
   renovaciones     INTEGER NOT NULL DEFAULT 0,
   notas            TEXT
 );
@@ -95,8 +124,20 @@ function abrir(dbPath = DB_PATH) {
   const db = new DatabaseSync(dbPath);
   db.exec('PRAGMA foreign_keys = ON;');
   if (dbPath !== ':memory:') db.exec('PRAGMA journal_mode = WAL;');
+  migrar(db);
   db.exec(SCHEMA);
   return db;
+}
+
+// Añade columnas nuevas a bases de datos creadas con una versión anterior
+function migrar(db) {
+  const columnas = (tabla) => db.prepare(`PRAGMA table_info(${tabla})`).all().map((c) => c.name);
+  const nuevas = { usuarios: ['password_hash TEXT', 'foto TEXT'], prestamos: ['prestado_en TEXT', 'devuelto_en TEXT'] };
+  for (const [tabla, defs] of Object.entries(nuevas)) {
+    const existentes = columnas(tabla);
+    if (!existentes.length) continue;
+    for (const def of defs) if (!existentes.includes(def.split(' ')[0])) db.exec(`ALTER TABLE ${tabla} ADD COLUMN ${def}`);
+  }
 }
 
 // Ejecuta fn dentro de una transacción; si lanza, deshace todo.
@@ -112,4 +153,4 @@ function transaccion(db, fn) {
   }
 }
 
-module.exports = { abrir, transaccion, DB_PATH, REGLAS, MAX_RENOVACIONES, MAX_SOLICITUDES };
+module.exports = { abrir, transaccion, DB_PATH, DATA_DIR, REGLAS, MAX_RENOVACIONES, MAX_SOLICITUDES };

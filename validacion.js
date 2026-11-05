@@ -90,4 +90,13 @@ function usuario(b) {
   };
 }
 
-module.exports = { HttpError, error, texto, entero, id, isbn, isbnValido, normalizarIsbn, libro, usuario, ROLES, ESTADOS };
+function password(valor, campo = 'contraseña') {
+  const v = String(valor ?? '');
+  if (v.length < 8) throw error(400, `La ${campo} debe tener al menos 8 caracteres`);
+  if (v.length > 128) throw error(400, `La ${campo} es demasiado larga`);
+  if (!/[A-Za-zÀ-ÿ]/.test(v) || !/\d/.test(v)) throw error(400, `La ${campo} debe incluir letras y números`);
+  return v;
+}
+
+module.exports = {
+  password, HttpError, error, texto, entero, id, isbn, isbnValido, normalizarIsbn, libro, usuario, ROLES, ESTADOS };
