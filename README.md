@@ -4,12 +4,26 @@ Sistema full-stack para gestionar la biblioteca de un centro educativo: catálog
 
 **Demo en vivo:** _URL_PENDIENTE_
 
+## Dos vistas según el rol
+
+| Rol | Cómo entra | Qué ve |
+|---|---|---|
+| **Personal de biblioteca** | PIN (`1234` en la demo, variable `ADMIN_PIN`) | Panel con KPIs, peticiones de lectores, retrasos y actividad; mostrador de préstamos; gestión del catálogo y de los lectores. |
+| **Lector** (alumno o profesor) | Su email del centro (en la demo hay accesos rápidos) | Sus libros con la cuenta atrás del plazo, renovación, avisos de retraso, peticiones con su puesto en la cola, recomendaciones según lo que ha leído, catálogo por estanterías estilo Apple Books e historial. |
+
+Los permisos se comprueban **en el servidor**: cada sesión tiene un token y las rutas de gestión exigen rol de biblioteca (401/403 si no). El lector no ve el historial de otros lectores.
+
+**Flujo de peticiones:** el lector pide un libro (o se apunta a la lista de espera si está agotado) → la petición aparece en el panel del bibliotecario → con un clic se convierte en préstamo aplicando todas las reglas. No se puede renovar un libro si otros lectores lo están esperando.
+
+**Interfaz:** tema claro y oscuro (sigue al sistema y recuerda la elección), barra lateral en ordenador e isla de navegación inferior en el móvil, portadas reales de Open Library y portadas generadas cuando no hay imagen.
+
 ## Funcionalidades
 
 | Módulo | Qué hace |
 |---|---|
 | **Libros** | CRUD completo, validación real de **ISBN-10/13** (dígito de control), **autocompletado por ISBN** (Google Books / Open Library) con portada, control dinámico de ejemplares, filtros por categoría y disponibilidad, búsqueda instantánea sin tildes. |
 | **Usuarios** | Alta de alumnos (con curso) y profesores (con departamento), estados de membresía **activo / suspendido / baja**, ficha con historial completo. |
+| **Peticiones** | Los lectores piden libros o se apuntan a la lista de espera; el bibliotecario las atiende o rechaza. |
 | **Préstamos** | Mostrador de préstamo con validación en vivo, **descuento atómico de stock**, fecha límite automática por rol, **renovaciones**, **devolución**, alertas de **retraso** y avisos de vencimiento. |
 | **Panel** | KPIs, préstamos con retraso, vencimientos en 3 días, gráfico de actividad de 14 días, ranking de más leídos y catálogo por categoría. |
 | **Tiempo real** | Server-Sent Events: cualquier cambio aparece al instante en todos los navegadores abiertos. |
@@ -27,7 +41,7 @@ Sistema full-stack para gestionar la biblioteca de un centro educativo: catálog
 - **Backend:** Node.js 22 + Express 5 (monolito, API REST)
 - **Base de datos:** SQLite con el módulo nativo `node:sqlite` (sin dependencias nativas que compilar)
 - **Frontend:** HTML5 + Tailwind CSS (CDN) + JavaScript vanilla, servido desde `public/`
-- **Tests:** `node:test` (4 suites que cubren las reglas de negocio)
+- **Tests:** `node:test` (6 suites: reglas de negocio, roles y flujo de peticiones)
 - **Despliegue:** Render (blueprint `render.yaml`)
 
 ```
@@ -48,7 +62,7 @@ npm start          # http://localhost:3000
 npm test           # pruebas automáticas
 ```
 
-Variables de entorno opcionales: `PORT`, `DB_PATH` (ruta del fichero SQLite), `SEED=false` (no cargar datos demo), `GOOGLE_BOOKS_API_KEY`, `TZ`.
+Variables de entorno opcionales: `PORT`, `ADMIN_PIN` (PIN del personal, por defecto `1234`), `DB_PATH` (ruta del fichero SQLite), `SEED=false` (no cargar datos demo), `GOOGLE_BOOKS_API_KEY`, `TZ`.
 
 ## API REST
 
@@ -66,10 +80,15 @@ Variables de entorno opcionales: `PORT`, `DB_PATH` (ruta del fichero SQLite), `S
 | POST | `/api/prestamos/:id/devolver` | Registrar devolución |
 | POST | `/api/prestamos/:id/renovar` | Renovar |
 | GET | `/api/stats` | Datos del panel |
+| POST / GET / DELETE | `/api/sesion` | Iniciar sesión (`{tipo:'admin', pin}` o `{tipo:'lector', email}`), consultar o cerrar |
+| GET | `/api/solicitudes` | Peticiones pendientes (biblioteca) |
+| POST | `/api/solicitudes/:id/atender` · `/rechazar` | Convertir en préstamo o rechazar |
+| GET | `/api/yo` | Zona del lector: sus préstamos, peticiones y recomendaciones |
+| POST | `/api/yo/solicitudes` · `/api/yo/prestamos/:id/renovar` | Pedir un libro · renovar el suyo |
 | GET | `/api/eventos` | Stream SSE de cambios |
 | GET | `/api/health` | Health check |
 
-Los errores devuelven `{ "error": "mensaje legible" }` con el código HTTP adecuado (400 validación, 404 no existe, 409 regla de negocio).
+Todas las rutas de gestión requieren `Authorization: Bearer <token>`. Los errores devuelven `{ "error": "mensaje legible" }` con el código HTTP adecuado (400 validación, 404 no existe, 409 regla de negocio).
 
 ## Despliegue
 

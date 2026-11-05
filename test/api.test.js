@@ -7,6 +7,7 @@ const { crearApp } = require('../server');
 
 let servidor;
 let base;
+let tokenAdmin;
 
 before(async () => {
   const db = abrir(':memory:');
@@ -14,13 +15,15 @@ before(async () => {
   servidor = crearApp(db).listen(0);
   await new Promise((r) => servidor.once('listening', r));
   base = `http://localhost:${servidor.address().port}`;
+  tokenAdmin = (await api('POST', '/api/sesion', { tipo: 'admin', pin: '1234' }, null)).body.token;
 });
 after(() => servidor.close());
 
-async function api(metodo, ruta, cuerpo) {
+// Por defecto las peticiones van como bibliotecario; se puede pasar otro token o null
+async function api(metodo, ruta, cuerpo, token = tokenAdmin) {
   const r = await fetch(base + ruta, {
     method: metodo,
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
     body: cuerpo ? JSON.stringify(cuerpo) : undefined,
   });
   return { status: r.status, body: await r.json() };
@@ -103,4 +106,41 @@ test('Estadísticas del panel', async () => {
   assert.ok(s.libros.titulos > 0);
   assert.ok(s.prestamos.retrasados >= 1);
   assert.equal(s.actividad.length, 14);
+});
+
+test('Roles: sin sesión o como lector no se puede gestionar', async () => {
+  assert.equal((await api('POST', '/api/sesion', { tipo: 'admin', pin: '0000' }, null)).status, 401);
+  assert.equal((await api('GET', '/api/stats', null, null)).status, 401);
+  assert.equal((await api('GET', '/api/libros', null, null)).status, 200); // el catálogo es público
+
+  const lector = (await api('POST', '/api/sesion', { tipo: 'lector', email: 'lucia.martinez@alumnos.colegio.es' }, null)).body;
+  assert.equal(lector.rol, 'lector');
+  assert.equal((await api('GET', '/api/usuarios', null, lector.token)).status, 403);
+  assert.equal((await api('POST', '/api/libros', { isbn: '9780306406157', titulo: 'X', autor: 'Y', ejemplares_totales: 1 }, lector.token)).status, 403);
+
+  // El lector no ve el historial de otros lectores en la ficha del libro
+  const ficha = (await api('GET', '/api/libros/1', null, lector.token)).body;
+  assert.equal(ficha.prestamos, undefined);
+});
+
+test('Petición de un lector: la atiende el bibliotecario y se convierte en préstamo', async () => {
+  const lector = (await api('POST', '/api/sesion', { tipo: 'lector', email: 'leo.torres@alumnos.colegio.es' }, null)).body;
+  const libro = (await api('GET', '/api/libros?disponibles=1')).body.find((l) => l.ejemplares_disponibles >= 1);
+
+  const s = await api('POST', '/api/yo/solicitudes', { libro_id: libro.id }, lector.token);
+  assert.equal(s.status, 201);
+  assert.equal((await api('POST', '/api/yo/solicitudes', { libro_id: libro.id }, lector.token)).status, 409); // duplicada
+
+  const p = await api('POST', `/api/solicitudes/${s.body.id}/atender`);
+  assert.equal(p.status, 201);
+  assert.equal((await api('GET', `/api/libros/${libro.id}`)).body.ejemplares_disponibles, libro.ejemplares_disponibles - 1);
+
+  const yo = (await api('GET', '/api/yo', null, lector.token)).body;
+  assert.ok(yo.prestamos.some((x) => x.id === p.body.id && x.estado === 'activo'));
+  assert.equal(yo.solicitudes.find((x) => x.id === s.body.id).estado, 'atendida');
+
+  // El lector puede renovar su préstamo, pero no el de otro
+  assert.equal((await api('POST', `/api/yo/prestamos/${p.body.id}/renovar`, null, lector.token)).status, 200);
+  const otro = (await api('GET', '/api/prestamos?estado=abiertos')).body.find((x) => x.usuario_id !== yo.id);
+  assert.equal((await api('POST', `/api/yo/prestamos/${otro.id}/renovar`, null, lector.token)).status, 403);
 });

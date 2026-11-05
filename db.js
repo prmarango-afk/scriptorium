@@ -12,6 +12,7 @@ const REGLAS = {
   profesor: { maxPrestamos: 6, diasPrestamo: 30 },
 };
 const MAX_RENOVACIONES = 2;
+const MAX_SOLICITUDES = 3;
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS libros (
@@ -51,6 +52,19 @@ CREATE TABLE IF NOT EXISTS prestamos (
   renovaciones     INTEGER NOT NULL DEFAULT 0,
   notas            TEXT
 );
+
+-- Peticiones de los lectores: el bibliotecario las atiende (crea el préstamo) o las rechaza.
+-- Se pueden pedir libros agotados: quedan en espera hasta que vuelva un ejemplar.
+CREATE TABLE IF NOT EXISTS solicitudes (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  libro_id    INTEGER NOT NULL REFERENCES libros(id)   ON DELETE CASCADE,
+  usuario_id  INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+  creada_en   TEXT    NOT NULL DEFAULT (datetime('now','localtime')),
+  estado      TEXT    NOT NULL DEFAULT 'pendiente' CHECK (estado IN ('pendiente','atendida','rechazada','cancelada')),
+  resuelta_en TEXT,
+  motivo      TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_solicitudes_estado ON solicitudes(estado);
 
 CREATE INDEX IF NOT EXISTS idx_prestamos_libro   ON prestamos(libro_id);
 CREATE INDEX IF NOT EXISTS idx_prestamos_usuario ON prestamos(usuario_id);
@@ -98,4 +112,4 @@ function transaccion(db, fn) {
   }
 }
 
-module.exports = { abrir, transaccion, DB_PATH, REGLAS, MAX_RENOVACIONES };
+module.exports = { abrir, transaccion, DB_PATH, REGLAS, MAX_RENOVACIONES, MAX_SOLICITUDES };

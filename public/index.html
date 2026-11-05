@@ -1,286 +1,421 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="es" data-tema="oscuro">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Scriptorium · Biblioteca escolar</title>
-  <meta name="description" content="Scriptorium: la biblioteca del centro. Catálogo, usuarios y préstamos." />
-  <meta name="theme-color" content="#050507" />
+  <meta name="description" content="Scriptorium: la biblioteca del centro. Catálogo, lectores y préstamos." />
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23111114'/%3E%3Cg fill='none' stroke='%23fff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round' transform='translate(4 4)'%3E%3Cpath d='M20.24 12.24a6 6 0 0 0-8.49-8.49L5 10.5V19h8.5z'/%3E%3Cpath d='M16 8 2 22'/%3E%3Cpath d='M17.5 15H9'/%3E%3C/g%3E%3C/svg%3E" />
+  <script>
+    // Tema antes de pintar nada (evita el destello): preferencia guardada o la del sistema
+    (function () {
+      let t = null;
+      try { t = localStorage.getItem('scriptorium.tema'); } catch (e) {}
+      if (t !== 'claro' && t !== 'oscuro') t = matchMedia('(prefers-color-scheme: light)').matches ? 'claro' : 'oscuro';
+      document.documentElement.dataset.tema = t;
+    })();
+  </script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
+    const c = (v) => `rgb(var(--${v}) / <alpha-value>)`;
     tailwind.config = {
       theme: {
         extend: {
           fontFamily: { sans: ['-apple-system', 'BlinkMacSystemFont', '"SF Pro Text"', 'Inter', 'system-ui', 'sans-serif'] },
           colors: {
-            ios: { blue: '#0a84ff', green: '#30d158', red: '#ff453a', orange: '#ff9f0a', yellow: '#ffd60a', purple: '#bf5af2', teal: '#64d2ff', indigo: '#5e5ce6', pink: '#ff375f' },
+            fondo: c('fondo'), modal: c('modal'), tinte: c('tinte'),
+            t1: c('t1'), t2: c('t2'), t3: c('t3'), t4: c('t4'),
+            ios: { blue: c('azul'), green: c('verde'), red: c('rojo'), orange: c('naranja'), yellow: c('amarillo'), purple: c('morado'), teal: c('celeste'), indigo: c('indigo') },
           },
         },
       },
     };
   </script>
   <style>
-    :root { color-scheme: dark; }
-    body { background: #050507; font-feature-settings: 'cv11', 'ss01', 'ss03'; -webkit-font-smoothing: antialiased; }
+    /* ── Tokens de color por tema (colores del sistema de Apple, variante accesible en claro) ── */
+    :root, [data-tema="oscuro"] {
+      color-scheme: dark;
+      --fondo: 5 5 7; --modal: 28 28 32; --tinte: 255 255 255;
+      --t1: 245 245 247; --t2: 199 199 204; --t3: 142 142 147; --t4: 99 99 102;
+      --azul: 10 132 255; --verde: 48 209 88; --rojo: 255 69 58; --naranja: 255 159 10; --amarillo: 255 214 10; --morado: 191 90 242; --celeste: 100 210 255; --indigo: 94 92 230;
+      --glass-bg: linear-gradient(180deg, rgba(255,255,255,.075), rgba(255,255,255,.025));
+      --glass-borde: rgba(255,255,255,.085);
+      --glass-sombra: inset 0 1px 0 rgba(255,255,255,.10), 0 12px 32px -12px rgba(0,0,0,.7);
+      --fuerte-bg: rgba(28,28,32,.74); --fuerte-borde: rgba(255,255,255,.10);
+      --fuerte-sombra: inset 0 1px 0 rgba(255,255,255,.12), 0 24px 60px -16px rgba(0,0,0,.8);
+      --brillo-1: rgba(10,132,255,.20); --brillo-2: rgba(191,90,242,.16); --brillo-3: rgba(48,209,88,.09); --rejilla: rgba(255,255,255,.035);
+    }
+    [data-tema="claro"] {
+      color-scheme: light;
+      --fondo: 242 242 247; --modal: 255 255 255; --tinte: 0 0 0;
+      --t1: 29 29 31; --t2: 72 72 74; --t3: 110 110 115; --t4: 162 162 168;
+      --azul: 0 113 227; --verde: 36 138 61; --rojo: 215 0 21; --naranja: 201 52 0; --amarillo: 178 80 0; --morado: 137 68 171; --celeste: 0 113 164; --indigo: 54 52 163;
+      --glass-bg: linear-gradient(180deg, rgba(255,255,255,.86), rgba(255,255,255,.64));
+      --glass-borde: rgba(0,0,0,.06);
+      --glass-sombra: inset 0 1px 0 rgba(255,255,255,.95), 0 1px 2px rgba(0,0,0,.04), 0 12px 32px -14px rgba(0,0,0,.16);
+      --fuerte-bg: rgba(255,255,255,.82); --fuerte-borde: rgba(0,0,0,.08);
+      --fuerte-sombra: inset 0 1px 0 rgba(255,255,255,.95), 0 24px 60px -16px rgba(0,0,0,.28);
+      --brillo-1: rgba(0,113,227,.13); --brillo-2: rgba(191,90,242,.11); --brillo-3: rgba(52,199,89,.09); --rejilla: rgba(0,0,0,.04);
+    }
 
-    /* Fondo ambiental: brillos de color + rejilla tenue (para que el cristal tenga algo que refractar) */
-    .fondo { position: fixed; inset: 0; z-index: -1; pointer-events: none;
-      background:
-        radial-gradient(42rem 32rem at 8% -12%, rgba(10,132,255,.20), transparent 60%),
-        radial-gradient(38rem 30rem at 102% 4%, rgba(191,90,242,.16), transparent 60%),
-        radial-gradient(44rem 30rem at 50% 115%, rgba(48,209,88,.09), transparent 60%); }
-    .fondo::after { content: ''; position: absolute; inset: 0;
-      background-image: linear-gradient(rgba(255,255,255,.035) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.035) 1px, transparent 1px);
+    body { background: rgb(var(--fondo)); color: rgb(var(--t1)); font-feature-settings: 'cv11', 'ss01', 'ss03'; -webkit-font-smoothing: antialiased; transition: background-color .3s, color .3s; }
+
+    /* Fondo ambiental: brillos de color + rejilla tenue */
+    .fondo-ambiental { position: fixed; inset: 0; z-index: -1; pointer-events: none;
+      background: radial-gradient(42rem 32rem at 8% -12%, var(--brillo-1), transparent 60%),
+                  radial-gradient(38rem 30rem at 102% 4%, var(--brillo-2), transparent 60%),
+                  radial-gradient(44rem 30rem at 50% 115%, var(--brillo-3), transparent 60%); }
+    .fondo-ambiental::after { content: ''; position: absolute; inset: 0;
+      background-image: linear-gradient(var(--rejilla) 1px, transparent 1px), linear-gradient(90deg, var(--rejilla) 1px, transparent 1px);
       background-size: 56px 56px; mask-image: radial-gradient(ellipse 80% 60% at 50% 0%, #000 20%, transparent 75%); }
 
     /* Cristal líquido: translúcido, desenfocado y con reflejo especular en el borde superior */
+    .glass, .card { background: var(--glass-bg); border: 1px solid var(--glass-borde); box-shadow: var(--glass-sombra);
+      -webkit-backdrop-filter: blur(24px) saturate(170%); backdrop-filter: blur(24px) saturate(170%); }
     .card { border-radius: 22px; }
-    .glass, .card { background: linear-gradient(180deg, rgba(255,255,255,.075), rgba(255,255,255,.025));
-      -webkit-backdrop-filter: blur(24px) saturate(170%); backdrop-filter: blur(24px) saturate(170%);
-      border: 1px solid rgba(255,255,255,.085);
-      box-shadow: inset 0 1px 0 rgba(255,255,255,.10), inset 0 -1px 0 rgba(255,255,255,.02), 0 12px 32px -12px rgba(0,0,0,.7); }
-    .glass-fuerte { background: rgba(28,28,32,.72);
-      -webkit-backdrop-filter: blur(30px) saturate(180%); backdrop-filter: blur(30px) saturate(180%);
-      border: 1px solid rgba(255,255,255,.10);
-      box-shadow: inset 0 1px 0 rgba(255,255,255,.12), 0 24px 60px -16px rgba(0,0,0,.8); }
+    .glass-fuerte { background: var(--fuerte-bg); border: 1px solid var(--fuerte-borde); box-shadow: var(--fuerte-sombra);
+      -webkit-backdrop-filter: blur(30px) saturate(180%); backdrop-filter: blur(30px) saturate(180%); }
 
     .vista { display: none; }
     .vista.activa { display: block; animation: aparecer .35s cubic-bezier(.2,.8,.2,1); }
     @keyframes aparecer { from { opacity: 0; transform: translateY(6px) scale(.995); } to { opacity: 1; transform: none; } }
 
-    dialog { color: #f4f4f5; padding: 0; }
-    dialog::backdrop { background: rgba(0,0,0,.55); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
+    dialog { color: rgb(var(--t1)); padding: 0; }
+    dialog::backdrop { background: rgba(0,0,0,.45); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
     dialog[open] { animation: modal .28s cubic-bezier(.2,.9,.25,1.15); }
     @keyframes modal { from { opacity: 0; transform: translateY(10px) scale(.97); } to { opacity: 1; transform: none; } }
 
     /* Interruptor estilo iOS */
-    .switch { appearance: none; -webkit-appearance: none; width: 42px; height: 26px; border-radius: 999px; background: rgba(255,255,255,.16);
+    .switch { appearance: none; -webkit-appearance: none; width: 42px; height: 26px; border-radius: 999px; background: rgb(var(--tinte) / .16);
       position: relative; cursor: pointer; transition: background .25s; flex-shrink: 0; }
     .switch::after { content: ''; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: #fff;
-      box-shadow: 0 2px 6px rgba(0,0,0,.45); transition: transform .25s cubic-bezier(.3,.7,.4,1.3); }
-    .switch:checked { background: #30d158; }
+      box-shadow: 0 2px 6px rgba(0,0,0,.35); transition: transform .25s cubic-bezier(.3,.7,.4,1.3); }
+    .switch:checked { background: #34c759; }
     .switch:checked::after { transform: translateX(16px); }
-    .switch:focus-visible { outline: 2px solid #0a84ff; outline-offset: 2px; }
+    .switch:focus-visible { outline: 2px solid rgb(var(--azul)); outline-offset: 2px; }
 
     .scroll-fino::-webkit-scrollbar { width: 8px; height: 8px; }
-    .scroll-fino::-webkit-scrollbar-thumb { background: rgba(255,255,255,.12); border-radius: 8px; }
+    .scroll-fino::-webkit-scrollbar-thumb { background: rgb(var(--tinte) / .14); border-radius: 8px; }
     .scroll-fino::-webkit-scrollbar-track { background: transparent; }
-    .lista-combo li[aria-selected="true"] { background: rgba(255,255,255,.08); }
+    .sin-scroll { scrollbar-width: none; } .sin-scroll::-webkit-scrollbar { display: none; }
+    .lista-combo li[aria-selected="true"] { background: rgb(var(--tinte) / .08); }
     .icono { display: inline-block; flex-shrink: 0; }
-    .pb-dock { padding-bottom: calc(7rem + env(safe-area-inset-bottom)); }
-    select.campo option { background: #1c1c20; }
+    select.campo option { background: rgb(var(--modal)); color: rgb(var(--t1)); }
+
+    /* Muro de portadas de la pantalla de acceso */
+    .muro { mask-image: linear-gradient(to bottom, transparent, #000 15%, #000 85%, transparent); }
+    .muro-col { animation: subir var(--dur, 60s) linear infinite; }
+    .muro-col.bajar { animation-name: bajar; }
+    @keyframes subir { from { transform: translateY(0); } to { transform: translateY(-50%); } }
+    @keyframes bajar { from { transform: translateY(-50%); } to { transform: translateY(0); } }
+    @media (prefers-reduced-motion: reduce) { .muro-col { animation: none; } }
+
+    /* Anillo de progreso del préstamo */
+    .anillo { transform: rotate(-90deg); }
+    .anillo circle { transition: stroke-dashoffset .6s cubic-bezier(.2,.8,.2,1); }
   </style>
   <style type="text/tailwindcss">
     @layer components {
-      .btn-primario { @apply inline-flex items-center justify-center gap-2 rounded-full bg-white text-black text-sm font-medium px-4 py-2 transition hover:bg-zinc-200 active:scale-[.97] disabled:opacity-30 disabled:pointer-events-none shadow-[0_8px_24px_-10px_rgba(255,255,255,.45)]; }
-      .btn-cristal { @apply inline-flex items-center justify-center gap-2 rounded-full bg-white/[0.07] border border-white/10 text-zinc-100 text-sm font-medium px-4 py-2 transition hover:bg-white/[0.12] active:scale-[.97] disabled:opacity-30 disabled:pointer-events-none shadow-[inset_0_1px_0_rgba(255,255,255,.10)]; }
+      .btn-primario { @apply inline-flex items-center justify-center gap-2 rounded-full bg-t1 text-fondo text-sm font-medium px-4 py-2 transition hover:opacity-85 active:scale-[.97] disabled:opacity-30 disabled:pointer-events-none shadow-[0_8px_24px_-12px_rgb(var(--t1)/0.5)]; }
+      .btn-cristal { @apply inline-flex items-center justify-center gap-2 rounded-full bg-tinte/[0.06] border border-tinte/10 text-t1 text-sm font-medium px-4 py-2 transition hover:bg-tinte/[0.11] active:scale-[.97] disabled:opacity-30 disabled:pointer-events-none; }
+      .btn-azul { @apply inline-flex items-center justify-center gap-2 rounded-full bg-ios-blue text-white text-sm font-medium px-4 py-2 transition hover:brightness-110 active:scale-[.97] disabled:opacity-30 disabled:pointer-events-none shadow-[0_8px_20px_-10px_rgb(var(--azul)/0.8)]; }
       .btn-verde { @apply inline-flex items-center justify-center gap-1.5 rounded-full bg-ios-green/15 text-ios-green ring-1 ring-inset ring-ios-green/25 text-xs font-medium px-3 py-1.5 transition hover:bg-ios-green/25 active:scale-[.97] disabled:opacity-30 disabled:pointer-events-none; }
-      .btn-mini { @apply inline-flex items-center justify-center gap-1.5 rounded-full bg-white/[0.06] ring-1 ring-inset ring-white/10 text-zinc-300 text-xs font-medium px-3 py-1.5 transition hover:bg-white/[0.12] hover:text-white active:scale-[.97] disabled:opacity-30 disabled:pointer-events-none; }
-      .btn-icono { @apply inline-grid place-items-center w-8 h-8 rounded-full bg-white/[0.05] ring-1 ring-inset ring-white/10 text-zinc-400 transition hover:text-white hover:bg-white/[0.12] active:scale-95; }
-      .btn-icono-rojo { @apply inline-grid place-items-center w-8 h-8 rounded-full bg-white/[0.05] ring-1 ring-inset ring-white/10 text-zinc-400 transition hover:text-ios-red hover:bg-ios-red/15 hover:ring-ios-red/30 active:scale-95; }
-      .campo { @apply w-full rounded-xl bg-white/[0.05] border border-white/10 px-3.5 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-500 outline-none transition focus:border-ios-blue/70 focus:ring-4 focus:ring-ios-blue/15 focus:bg-white/[0.07]; }
-      .etiqueta { @apply block text-[11px] font-medium uppercase tracking-[.08em] text-zinc-500 mb-1.5; }
-      .th { @apply px-4 py-3 text-[11px] font-medium uppercase tracking-[.08em] text-zinc-500 text-left whitespace-nowrap; }
-      .segmentado { @apply inline-flex p-1 rounded-full bg-white/[0.05] border border-white/10 shadow-[inset_0_1px_2px_rgba(0,0,0,.3)]; }
-      .seg { @apply px-3.5 py-1.5 rounded-full text-[13px] font-medium text-zinc-400 transition hover:text-zinc-100 whitespace-nowrap; }
-      .seg.activa { @apply bg-white/[0.13] text-white shadow-[inset_0_1px_0_rgba(255,255,255,.18),0_2px_8px_-2px_rgba(0,0,0,.5)]; }
-      .dock-btn { @apply relative flex flex-col items-center gap-1 w-[68px] sm:w-[76px] py-2 rounded-2xl text-zinc-400 transition hover:text-zinc-100 hover:bg-white/[0.05] active:scale-95; }
-      .dock-btn.activa { @apply bg-white/[0.10] text-ios-blue shadow-[inset_0_1px_0_rgba(255,255,255,.12)]; }
-      .titulo-seccion { @apply text-[15px] font-semibold text-zinc-100 flex items-center gap-2; }
+      .btn-mini { @apply inline-flex items-center justify-center gap-1.5 rounded-full bg-tinte/[0.06] ring-1 ring-inset ring-tinte/10 text-t2 text-xs font-medium px-3 py-1.5 transition hover:bg-tinte/[0.11] hover:text-t1 active:scale-[.97] disabled:opacity-30 disabled:pointer-events-none; }
+      .btn-icono { @apply inline-grid place-items-center w-8 h-8 rounded-full bg-tinte/[0.05] ring-1 ring-inset ring-tinte/10 text-t3 transition hover:text-t1 hover:bg-tinte/[0.11] active:scale-95; }
+      .btn-icono-rojo { @apply inline-grid place-items-center w-8 h-8 rounded-full bg-tinte/[0.05] ring-1 ring-inset ring-tinte/10 text-t3 transition hover:text-ios-red hover:bg-ios-red/15 hover:ring-ios-red/30 active:scale-95; }
+      .campo { @apply w-full rounded-xl bg-tinte/[0.05] border border-tinte/10 px-3.5 py-2.5 text-sm text-t1 placeholder:text-t4 outline-none transition focus:border-ios-blue/70 focus:ring-4 focus:ring-ios-blue/15; }
+      .etiqueta { @apply block text-[11px] font-medium uppercase tracking-[.08em] text-t3 mb-1.5; }
+      .th { @apply px-4 py-3 text-[11px] font-medium uppercase tracking-[.08em] text-t3 text-left whitespace-nowrap; }
+      .segmentado { @apply inline-flex p-1 rounded-full bg-tinte/[0.05] border border-tinte/10; }
+      .seg { @apply px-3.5 py-1.5 rounded-full text-[13px] font-medium text-t3 transition hover:text-t1 whitespace-nowrap; }
+      .seg.activa { @apply bg-modal text-t1 shadow-[0_1px_0_rgb(var(--tinte)/0.10)_inset,0_2px_8px_-2px_rgba(0,0,0,.35)]; }
+      .dock-btn { @apply relative flex flex-col items-center gap-1 w-[72px] py-2 rounded-2xl text-t3 transition hover:text-t1 active:scale-95; }
+      .dock-btn.activa { @apply bg-tinte/[0.08] text-ios-blue; }
+      .lado-btn { @apply relative flex items-center gap-3 w-full px-3 py-2.5 rounded-xl text-sm font-medium text-t2 transition hover:bg-tinte/[0.05] hover:text-t1; }
+      .lado-btn.activa { @apply bg-tinte/[0.08] text-t1 shadow-[inset_0_1px_0_rgb(var(--tinte)/0.08)]; }
+      .lado-btn.activa .icono { @apply text-ios-blue; }
+      .titulo-seccion { @apply text-[15px] font-semibold text-t1 flex items-center gap-2; }
+      .titulo-vista { @apply text-3xl sm:text-[40px] font-semibold tracking-[-0.03em] leading-tight; }
     }
   </style>
 </head>
-<body class="text-zinc-100 font-sans min-h-screen">
-<div class="fondo"></div>
+<body class="font-sans min-h-screen">
+<div class="fondo-ambiental"></div>
 
-<!-- ─────────── Barra superior ─────────── -->
-<header class="sticky top-0 z-30 border-b border-white/[0.06] bg-[#050507]/60 backdrop-blur-xl backdrop-saturate-150">
-  <div class="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-3">
-    <a href="#panel" data-ir="panel" class="flex items-center gap-3">
-      <span class="glass w-9 h-9 rounded-[11px] grid place-items-center text-white"><i data-icono="pluma" class="w-[18px] h-[18px]"></i></span>
-      <span class="leading-tight">
-        <span class="block font-semibold tracking-tight text-[15px]">Scriptorium</span>
-        <span class="block text-[11px] text-zinc-500">Biblioteca escolar</span>
-      </span>
-    </a>
-    <div class="flex items-center gap-2">
-      <span id="estado-conexion" class="hidden sm:inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs text-zinc-400 bg-white/[0.04] ring-1 ring-inset ring-white/[0.08]">
-        <span class="punto w-1.5 h-1.5 rounded-full bg-zinc-500"></span><span class="texto">Conectando</span>
-      </span>
-      <button class="btn-nuevo-prestamo btn-primario"><i data-icono="mas" class="w-4 h-4"></i><span class="hidden sm:inline">Nuevo préstamo</span></button>
+<!-- ═══════════════════ PANTALLA DE ACCESO ═══════════════════ -->
+<section id="pantalla-acceso" class="hidden">
+<div class="min-h-screen lg:grid lg:grid-cols-[1.1fr_1fr]">
+  <!-- Muro de portadas -->
+  <div class="relative hidden lg:block overflow-hidden h-screen">
+    <div id="muro" class="muro absolute inset-0 flex gap-4 px-6 -rotate-6 scale-110 opacity-90"></div>
+    <div class="absolute inset-0 bg-gradient-to-r from-transparent via-transparent to-fondo"></div>
+  </div>
+  <div class="relative flex items-center justify-center p-5 sm:p-10 min-h-screen">
+    <div class="absolute top-5 right-5"><button class="btn-tema btn-icono w-10 h-10" aria-label="Cambiar tema"></button></div>
+    <div class="w-full max-w-[420px]">
+      <div class="flex items-center gap-3 mb-8">
+        <span class="glass w-12 h-12 rounded-[14px] grid place-items-center"><i data-icono="pluma" class="w-6 h-6"></i></span>
+        <div><p class="text-2xl font-semibold tracking-tight">Scriptorium</p><p class="text-sm text-t3">La biblioteca de tu centro</p></div>
+      </div>
+      <!-- Muro en móvil: una fila de portadas -->
+      <div id="muro-movil" class="lg:hidden flex gap-3 overflow-hidden -mx-5 px-5 mb-8 sin-scroll"></div>
+
+      <h1 class="text-[32px] font-semibold tracking-[-0.03em] leading-tight">Bienvenido</h1>
+      <p class="text-t3 mt-1 mb-6">¿Cómo quieres entrar?</p>
+
+      <div class="segmentado w-full grid grid-cols-2 mb-5" id="selector-acceso">
+        <button class="seg activa flex items-center justify-center gap-2" data-acceso="lector"><i data-icono="libroAbierto" class="w-4 h-4"></i>Soy lector</button>
+        <button class="seg flex items-center justify-center gap-2" data-acceso="admin"><i data-icono="estanteria" class="w-4 h-4"></i>Biblioteca</button>
+      </div>
+
+      <form id="form-acceso-lector" class="card p-5" autocomplete="off">
+        <label class="etiqueta" for="acceso-email">Email del centro</label>
+        <input id="acceso-email" type="email" required placeholder="nombre@alumnos.colegio.es" class="campo" />
+        <button class="btn-azul w-full py-2.5 mt-4" type="submit">Entrar<i data-icono="chevron" class="w-4 h-4"></i></button>
+        <div id="lectores-demo" class="mt-5 pt-4 border-t border-tinte/[0.08]"></div>
+      </form>
+
+      <form id="form-acceso-admin" class="card p-5 hidden" autocomplete="off">
+        <label class="etiqueta" for="acceso-pin">PIN del personal</label>
+        <input id="acceso-pin" type="password" inputmode="numeric" maxlength="8" required placeholder="••••" class="campo text-center text-2xl tracking-[.6em] font-semibold" />
+        <button class="btn-azul w-full py-2.5 mt-4" type="submit">Entrar<i data-icono="chevron" class="w-4 h-4"></i></button>
+        <p class="text-xs text-t3 mt-4 flex items-center gap-2"><i data-icono="info" class="w-3.5 h-3.5"></i>PIN de la demo: <b class="text-t1 font-semibold">1234</b></p>
+      </form>
+      <p id="error-acceso" class="hidden mt-4 text-sm text-ios-red bg-ios-red/10 ring-1 ring-inset ring-ios-red/25 rounded-xl px-3.5 py-2.5"></p>
     </div>
   </div>
-</header>
+</div>
+</section>
 
-<main class="max-w-6xl mx-auto px-4 sm:px-6 pt-8 pb-dock">
+<!-- ═══════════════════ APLICACIÓN ═══════════════════ -->
+<div id="aplicacion" class="hidden">
 
-  <!-- ─────────── PANEL ─────────── -->
-  <section id="vista-panel" class="vista activa">
-    <div class="mb-8">
-      <p class="text-sm text-zinc-500 first-letter:uppercase" id="fecha-hoy"></p>
-      <h1 class="text-3xl sm:text-[40px] font-semibold tracking-[-0.03em] leading-tight mt-1">Resumen de hoy</h1>
-    </div>
-
-    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-4" id="kpis"></div>
-
-    <div id="alerta-retrasos" class="hidden card mb-4 p-5 relative overflow-hidden">
-      <div class="absolute inset-0 bg-gradient-to-br from-ios-red/[0.12] via-transparent to-transparent pointer-events-none"></div>
-      <div class="relative flex items-center justify-between gap-3 mb-3">
-        <h2 class="titulo-seccion"><span class="w-7 h-7 rounded-full bg-ios-red/15 text-ios-red grid place-items-center"><i data-icono="alerta" class="w-4 h-4"></i></span>
-          Préstamos con retraso <span id="n-retrasos" class="text-xs font-semibold text-ios-red bg-ios-red/15 rounded-full px-2 py-0.5"></span></h2>
-        <button class="text-[13px] text-zinc-400 hover:text-white inline-flex items-center gap-1" data-ir="prestamos" data-filtro="retrasado">Ver todos<i data-icono="chevron" class="w-3.5 h-3.5"></i></button>
+  <!-- Barra lateral (ordenador) -->
+  <aside class="hidden lg:flex fixed inset-y-0 left-0 w-64 z-30 flex-col p-3">
+    <div class="glass rounded-[24px] h-full flex flex-col p-3">
+      <a href="#" data-ir="inicio" class="flex items-center gap-3 px-2 pt-2 pb-5">
+        <span class="glass w-10 h-10 rounded-[12px] grid place-items-center"><i data-icono="pluma" class="w-5 h-5"></i></span>
+        <span class="leading-tight"><span class="block font-semibold tracking-tight">Scriptorium</span><span class="block text-[11px] text-t3 rol-texto"></span></span>
+      </a>
+      <nav id="nav-lateral" class="flex flex-col gap-1" aria-label="Secciones"></nav>
+      <div class="mt-auto space-y-2">
+        <div class="flex items-center justify-between pl-3 pr-1">
+          <div id="estado-conexion" class="flex items-center gap-2 text-xs text-t3">
+            <span class="punto w-1.5 h-1.5 rounded-full bg-t4"></span><span class="texto">Conectando</span>
+          </div>
+          <button class="btn-tema btn-icono" aria-label="Cambiar tema"></button>
+        </div>
+        <div class="flex items-center gap-3 p-2 rounded-2xl bg-tinte/[0.04] ring-1 ring-inset ring-tinte/[0.06]">
+          <span class="avatar-sesion"></span>
+          <div class="min-w-0 flex-1 leading-tight"><p class="text-sm font-medium truncate nombre-sesion"></p><p class="text-[11px] text-t3 truncate rol-texto"></p></div>
+          <button class="btn-salir btn-icono" aria-label="Cerrar sesión" title="Cerrar sesión"><i data-icono="salir" class="w-4 h-4"></i></button>
+        </div>
       </div>
-      <ul id="lista-retrasos" class="relative divide-y divide-white/[0.06]"></ul>
     </div>
+  </aside>
 
-    <div class="grid lg:grid-cols-3 gap-4">
-      <div class="lg:col-span-2 card p-5">
-        <div class="flex items-center justify-between mb-5">
-          <h2 class="titulo-seccion"><i data-icono="grafico" class="w-4 h-4 text-zinc-500"></i>Actividad · 14 días</h2>
-          <div class="flex gap-4 text-xs text-zinc-500">
-            <span class="flex items-center gap-1.5"><i class="w-2 h-2 rounded-full bg-ios-blue inline-block"></i>Préstamos</span>
-            <span class="flex items-center gap-1.5"><i class="w-2 h-2 rounded-full bg-ios-green inline-block"></i>Devoluciones</span>
+  <!-- Barra superior (móvil) -->
+  <header class="lg:hidden sticky top-0 z-30 border-b border-tinte/[0.06] bg-fondo/70 backdrop-blur-xl backdrop-saturate-150">
+    <div class="px-4 h-14 flex items-center justify-between gap-3">
+      <a href="#" data-ir="inicio" class="flex items-center gap-2.5">
+        <span class="glass w-8 h-8 rounded-[10px] grid place-items-center"><i data-icono="pluma" class="w-4 h-4"></i></span>
+        <span class="font-semibold tracking-tight">Scriptorium</span>
+      </a>
+      <div class="flex items-center gap-2">
+        <button class="btn-tema btn-icono" aria-label="Cambiar tema"></button>
+        <button class="btn-salir btn-icono" aria-label="Cerrar sesión"><i data-icono="salir" class="w-4 h-4"></i></button>
+      </div>
+    </div>
+  </header>
+
+  <main class="lg:pl-64">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-10 pt-6 lg:pt-10 pb-32 lg:pb-12">
+
+      <!-- ─────────── ADMIN · PANEL ─────────── -->
+      <section id="vista-panel" class="vista">
+        <div class="flex flex-wrap items-end justify-between gap-4 mb-8">
+          <div>
+            <p class="text-sm text-t3 first-letter:uppercase fecha-hoy"></p>
+            <h1 class="titulo-vista mt-1">Resumen de hoy</h1>
+          </div>
+          <button class="btn-nuevo-prestamo btn-primario"><i data-icono="mas" class="w-4 h-4"></i>Nuevo préstamo</button>
+        </div>
+
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-4" id="kpis"></div>
+
+        <div class="grid lg:grid-cols-2 gap-4 mb-4">
+          <div id="caja-solicitudes" class="card p-5"></div>
+          <div id="alerta-retrasos" class="card p-5 relative overflow-hidden">
+            <div class="absolute inset-0 bg-gradient-to-br from-ios-red/[0.10] via-transparent to-transparent pointer-events-none"></div>
+            <div class="relative flex items-center justify-between gap-3 mb-3">
+              <h2 class="titulo-seccion"><span class="w-7 h-7 rounded-full bg-ios-red/15 text-ios-red grid place-items-center"><i data-icono="alerta" class="w-4 h-4"></i></span>
+                Con retraso <span id="n-retrasos" class="text-xs font-semibold text-ios-red bg-ios-red/15 rounded-full px-2 py-0.5"></span></h2>
+              <button class="text-[13px] text-t3 hover:text-t1 inline-flex items-center gap-1" data-ir="prestamos" data-filtro="retrasado">Ver todos<i data-icono="chevron" class="w-3.5 h-3.5"></i></button>
+            </div>
+            <ul id="lista-retrasos" class="relative divide-y divide-tinte/[0.06]"></ul>
           </div>
         </div>
-        <div id="grafico" class="h-44 flex items-end gap-1 sm:gap-2"></div>
-      </div>
-      <div class="card p-5">
-        <h2 class="titulo-seccion mb-4"><i data-icono="reloj" class="w-4 h-4 text-zinc-500"></i>Vencen en 3 días</h2>
-        <ul id="lista-pronto" class="space-y-3"></ul>
-      </div>
-      <div class="card p-5">
-        <h2 class="titulo-seccion mb-4"><i data-icono="medalla" class="w-4 h-4 text-zinc-500"></i>Más leídos</h2>
-        <ol id="lista-top" class="space-y-1"></ol>
-      </div>
-      <div class="card p-5">
-        <h2 class="titulo-seccion mb-4"><i data-icono="etiqueta" class="w-4 h-4 text-zinc-500"></i>Por categoría</h2>
-        <div id="lista-categorias" class="space-y-2.5"></div>
-      </div>
-      <div class="card p-5" id="reglas-box"></div>
-    </div>
-  </section>
 
-  <!-- ─────────── PRÉSTAMOS ─────────── -->
-  <section id="vista-prestamos" class="vista">
-    <div class="mb-8">
-      <h1 class="text-3xl sm:text-[40px] font-semibold tracking-[-0.03em] leading-tight">Préstamos</h1>
-      <p class="text-zinc-500 mt-1">Presta, devuelve y renueva. El stock se actualiza solo.</p>
-    </div>
+        <div class="grid lg:grid-cols-3 gap-4">
+          <div class="lg:col-span-2 card p-5">
+            <div class="flex items-center justify-between mb-5">
+              <h2 class="titulo-seccion"><i data-icono="grafico" class="w-4 h-4 text-t3"></i>Actividad · 14 días</h2>
+              <div class="flex gap-4 text-xs text-t3">
+                <span class="flex items-center gap-1.5"><i class="w-2 h-2 rounded-full bg-ios-blue inline-block"></i>Préstamos</span>
+                <span class="flex items-center gap-1.5"><i class="w-2 h-2 rounded-full bg-ios-green inline-block"></i>Devoluciones</span>
+              </div>
+            </div>
+            <div id="grafico" class="h-44 flex items-end gap-1 sm:gap-2"></div>
+          </div>
+          <div class="card p-5">
+            <h2 class="titulo-seccion mb-4"><i data-icono="reloj" class="w-4 h-4 text-t3"></i>Vencen en 3 días</h2>
+            <ul id="lista-pronto" class="space-y-3"></ul>
+          </div>
+          <div class="lg:col-span-3 card p-5">
+            <div class="flex items-center justify-between mb-4">
+              <h2 class="titulo-seccion"><i data-icono="medalla" class="w-4 h-4 text-t3"></i>Los más leídos</h2>
+              <button class="text-[13px] text-t3 hover:text-t1 inline-flex items-center gap-1" data-ir="libros">Catálogo<i data-icono="chevron" class="w-3.5 h-3.5"></i></button>
+            </div>
+            <ol id="lista-top" class="grid grid-cols-3 sm:grid-cols-5 gap-4"></ol>
+          </div>
+          <div class="lg:col-span-2 card p-5">
+            <h2 class="titulo-seccion mb-4"><i data-icono="etiqueta" class="w-4 h-4 text-t3"></i>Fondo por categoría</h2>
+            <div id="lista-categorias" class="grid sm:grid-cols-2 gap-x-8 gap-y-2.5"></div>
+          </div>
+          <div class="card p-5" id="reglas-box"></div>
+        </div>
+      </section>
 
-    <div class="card p-5 sm:p-6 mb-4 relative z-10">
-      <h2 class="titulo-seccion mb-5"><span class="w-7 h-7 rounded-full bg-ios-blue/15 text-ios-blue grid place-items-center"><i data-icono="intercambio" class="w-4 h-4"></i></span>Mostrador</h2>
-      <form id="form-prestamo" class="grid md:grid-cols-12 gap-4 items-start" autocomplete="off">
-        <div class="md:col-span-4">
-          <label class="etiqueta">Lector</label>
-          <div class="combo" data-tipo="usuario"></div>
-          <div id="info-usuario" class="mt-2 text-xs space-y-1"></div>
+      <!-- ─────────── ADMIN · PRÉSTAMOS ─────────── -->
+      <section id="vista-prestamos" class="vista">
+        <div class="mb-8">
+          <h1 class="titulo-vista">Préstamos</h1>
+          <p class="text-t3 mt-1">Presta, devuelve y renueva. El stock se actualiza solo.</p>
         </div>
-        <div class="md:col-span-4">
-          <label class="etiqueta">Libro</label>
-          <div class="combo" data-tipo="libro"></div>
-          <div id="info-libro" class="mt-2 text-xs space-y-1"></div>
-        </div>
-        <div class="md:col-span-2">
-          <label class="etiqueta" for="prestamo-dias">Días</label>
-          <input id="prestamo-dias" type="number" min="1" max="90" placeholder="Auto" class="campo" />
-          <p id="info-fecha" class="mt-2 text-xs text-zinc-500"></p>
-        </div>
-        <div class="md:col-span-2 md:pt-[22px]">
-          <button type="submit" id="btn-prestar" class="btn-primario w-full py-2.5"><i data-icono="check" class="w-4 h-4"></i>Prestar</button>
-        </div>
-      </form>
-    </div>
 
-    <div class="card overflow-hidden">
-      <div class="p-4 flex flex-wrap gap-3 items-center justify-between border-b border-white/[0.06]">
-        <div class="segmentado max-w-full overflow-x-auto" id="tabs-prestamos">
-          <button class="seg activa" data-estado="abiertos">Abiertos</button>
-          <button class="seg" data-estado="retrasado">Con retraso</button>
-          <button class="seg" data-estado="devuelto">Historial</button>
-          <button class="seg" data-estado="">Todos</button>
+        <div class="card p-5 sm:p-6 mb-4 relative z-10">
+          <h2 class="titulo-seccion mb-5"><span class="w-7 h-7 rounded-full bg-ios-blue/15 text-ios-blue grid place-items-center"><i data-icono="intercambio" class="w-4 h-4"></i></span>Mostrador</h2>
+          <form id="form-prestamo" class="grid md:grid-cols-12 gap-4 items-start" autocomplete="off">
+            <div class="md:col-span-4"><label class="etiqueta">Lector</label><div class="combo" data-tipo="usuario"></div><div id="info-usuario" class="mt-2 text-xs space-y-1"></div></div>
+            <div class="md:col-span-4"><label class="etiqueta">Libro</label><div class="combo" data-tipo="libro"></div><div id="info-libro" class="mt-2 text-xs space-y-1"></div></div>
+            <div class="md:col-span-2"><label class="etiqueta" for="prestamo-dias">Días</label>
+              <input id="prestamo-dias" type="number" min="1" max="90" placeholder="Auto" class="campo" /><p id="info-fecha" class="mt-2 text-xs text-t3"></p></div>
+            <div class="md:col-span-2 md:pt-[22px]"><button type="submit" id="btn-prestar" class="btn-primario w-full py-2.5"><i data-icono="check" class="w-4 h-4"></i>Prestar</button></div>
+          </form>
         </div>
-        <label class="relative w-full sm:w-72">
-          <i data-icono="buscar" class="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-500"></i>
-          <input type="search" id="buscar-prestamos" placeholder="Buscar libro, lector o ISBN" class="campo rounded-full pl-10 py-2" />
+
+        <div id="caja-solicitudes-prestamos" class="card p-5 mb-4"></div>
+
+        <div class="card overflow-hidden">
+          <div class="p-4 flex flex-wrap gap-3 items-center justify-between border-b border-tinte/[0.06]">
+            <div class="segmentado max-w-full overflow-x-auto sin-scroll" id="tabs-prestamos">
+              <button class="seg activa" data-estado="abiertos">Abiertos</button>
+              <button class="seg" data-estado="retrasado">Con retraso</button>
+              <button class="seg" data-estado="devuelto">Historial</button>
+              <button class="seg" data-estado="">Todos</button>
+            </div>
+            <label class="relative w-full sm:w-72">
+              <i data-icono="buscar" class="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-t3"></i>
+              <input type="search" id="buscar-prestamos" placeholder="Buscar libro, lector o ISBN" class="campo rounded-full pl-10 py-2" />
+            </label>
+          </div>
+          <div class="overflow-x-auto scroll-fino">
+            <table class="w-full text-sm">
+              <thead><tr><th class="th">Libro</th><th class="th">Lector</th><th class="th hidden xl:table-cell">Prestado</th><th class="th">Devolver antes de</th><th class="th">Estado</th><th class="th text-right">Acciones</th></tr></thead>
+              <tbody id="tabla-prestamos" class="divide-y divide-tinte/[0.05]"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ─────────── ADMIN · CATÁLOGO ─────────── -->
+      <section id="vista-libros" class="vista">
+        <div class="flex flex-wrap items-end justify-between gap-4 mb-8">
+          <div><h1 class="titulo-vista">Catálogo</h1><p class="text-t3 mt-1" id="resumen-libros"></p></div>
+          <button id="btn-nuevo-libro" class="btn-primario"><i data-icono="mas" class="w-4 h-4"></i>Añadir libro</button>
+        </div>
+        <div class="flex flex-wrap gap-3 items-center mb-4">
+          <label class="relative flex-1 min-w-[220px]">
+            <i data-icono="buscar" class="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-t3"></i>
+            <input type="search" id="buscar-libros" placeholder="Título, autor, ISBN o editorial" class="campo rounded-full pl-10" />
+          </label>
+          <label class="inline-flex items-center gap-3 text-sm text-t2 glass rounded-full pl-4 pr-2 py-1.5 cursor-pointer select-none">
+            Solo disponibles <input type="checkbox" id="solo-disponibles" class="switch" /></label>
+        </div>
+        <div id="chips-categorias" class="flex flex-wrap gap-2 mb-6"></div>
+        <div id="grid-libros" class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4"></div>
+      </section>
+
+      <!-- ─────────── ADMIN · LECTORES ─────────── -->
+      <section id="vista-usuarios" class="vista">
+        <div class="flex flex-wrap items-end justify-between gap-4 mb-8">
+          <div><h1 class="titulo-vista">Lectores</h1><p class="text-t3 mt-1" id="resumen-usuarios"></p></div>
+          <button id="btn-nuevo-usuario" class="btn-primario"><i data-icono="mas" class="w-4 h-4"></i>Añadir lector</button>
+        </div>
+        <div class="card overflow-hidden">
+          <div class="p-4 flex flex-wrap gap-3 items-center border-b border-tinte/[0.06]">
+            <label class="relative flex-1 min-w-[200px]">
+              <i data-icono="buscar" class="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-t3"></i>
+              <input type="search" id="buscar-usuarios" placeholder="Nombre, email o curso" class="campo rounded-full pl-10 py-2" />
+            </label>
+            <div class="segmentado" id="filtro-rol">
+              <button class="seg activa" data-valor="">Todos</button>
+              <button class="seg" data-valor="alumno">Alumnos</button>
+              <button class="seg" data-valor="profesor">Profesores</button>
+            </div>
+            <select id="filtro-estado" class="campo w-auto rounded-full py-2 pr-8">
+              <option value="">Cualquier estado</option><option value="activo">Activos</option><option value="suspendido">Suspendidos</option><option value="baja">De baja</option></select>
+          </div>
+          <div class="overflow-x-auto scroll-fino">
+            <table class="w-full text-sm">
+              <thead><tr><th class="th">Lector</th><th class="th">Rol</th><th class="th">Estado</th><th class="th">Préstamos</th><th class="th text-right">Acciones</th></tr></thead>
+              <tbody id="tabla-usuarios" class="divide-y divide-tinte/[0.05]"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ─────────── LECTOR · INICIO ─────────── -->
+      <section id="vista-mi-inicio" class="vista">
+        <div id="lector-saludo" class="mb-8"></div>
+        <div id="lector-avisos" class="space-y-3 mb-6"></div>
+        <div class="flex items-center justify-between mb-4"><h2 class="text-xl font-semibold tracking-tight">Leyendo ahora</h2><span class="text-sm text-t3" id="lector-cupo"></span></div>
+        <div id="lector-leyendo" class="grid md:grid-cols-2 xl:grid-cols-3 gap-4 mb-10"></div>
+        <div id="lector-peticiones-caja" class="mb-10"></div>
+        <div class="flex items-center justify-between mb-4"><h2 class="text-xl font-semibold tracking-tight">Para ti</h2>
+          <button class="text-[13px] text-t3 hover:text-t1 inline-flex items-center gap-1" data-ir="explorar">Explorar todo<i data-icono="chevron" class="w-3.5 h-3.5"></i></button></div>
+        <div id="lector-recomendados" class="flex gap-4 overflow-x-auto sin-scroll -mx-4 px-4 sm:-mx-6 sm:px-6 lg:mx-0 lg:px-0 pb-2"></div>
+      </section>
+
+      <!-- ─────────── LECTOR · EXPLORAR ─────────── -->
+      <section id="vista-explorar" class="vista">
+        <div class="mb-6"><h1 class="titulo-vista">Explorar</h1><p class="text-t3 mt-1">Todo el fondo de la biblioteca. Pide un libro y te avisamos en el mostrador.</p></div>
+        <label class="relative block mb-4">
+          <i data-icono="buscar" class="w-4 h-4 absolute left-4 top-1/2 -translate-y-1/2 text-t3"></i>
+          <input type="search" id="buscar-explorar" placeholder="Busca por título, autor o tema" class="campo rounded-full pl-11 py-3 text-base" />
         </label>
-      </div>
-      <div class="overflow-x-auto scroll-fino">
-        <table class="w-full text-sm">
-          <thead><tr><th class="th">Libro</th><th class="th">Lector</th><th class="th hidden lg:table-cell">Prestado</th><th class="th">Devolver antes de</th><th class="th">Estado</th><th class="th text-right">Acciones</th></tr></thead>
-          <tbody id="tabla-prestamos" class="divide-y divide-white/[0.05]"></tbody>
-        </table>
-      </div>
-    </div>
-  </section>
+        <div id="chips-explorar" class="flex gap-2 overflow-x-auto sin-scroll mb-8 -mx-4 px-4 sm:mx-0 sm:px-0"></div>
+        <div id="explorar-destacado" class="mb-10"></div>
+        <div id="explorar-estantes" class="space-y-10"></div>
+      </section>
 
-  <!-- ─────────── LIBROS ─────────── -->
-  <section id="vista-libros" class="vista">
-    <div class="flex flex-wrap items-end justify-between gap-4 mb-8">
-      <div>
-        <h1 class="text-3xl sm:text-[40px] font-semibold tracking-[-0.03em] leading-tight">Catálogo</h1>
-        <p class="text-zinc-500 mt-1" id="resumen-libros"></p>
-      </div>
-      <button id="btn-nuevo-libro" class="btn-primario"><i data-icono="mas" class="w-4 h-4"></i>Añadir libro</button>
+      <!-- ─────────── LECTOR · HISTORIAL ─────────── -->
+      <section id="vista-historial" class="vista">
+        <div class="mb-8"><h1 class="titulo-vista">Mi historial</h1><p class="text-t3 mt-1" id="historial-resumen"></p></div>
+        <div id="historial-stats" class="grid grid-cols-3 gap-3 sm:gap-4 mb-6"></div>
+        <div id="historial-lista" class="card divide-y divide-tinte/[0.06] overflow-hidden"></div>
+      </section>
     </div>
-    <div class="flex flex-wrap gap-3 items-center mb-4">
-      <label class="relative flex-1 min-w-[220px]">
-        <i data-icono="buscar" class="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-500"></i>
-        <input type="search" id="buscar-libros" placeholder="Título, autor, ISBN o editorial" class="campo rounded-full pl-10" />
-      </label>
-      <label class="inline-flex items-center gap-3 text-sm text-zinc-300 glass rounded-full pl-4 pr-2 py-1.5 cursor-pointer select-none">
-        Solo disponibles <input type="checkbox" id="solo-disponibles" class="switch" /></label>
-    </div>
-    <div id="chips-categorias" class="flex flex-wrap gap-2 mb-6"></div>
-    <div id="grid-libros" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"></div>
-  </section>
+  </main>
 
-  <!-- ─────────── USUARIOS ─────────── -->
-  <section id="vista-usuarios" class="vista">
-    <div class="flex flex-wrap items-end justify-between gap-4 mb-8">
-      <div>
-        <h1 class="text-3xl sm:text-[40px] font-semibold tracking-[-0.03em] leading-tight">Lectores</h1>
-        <p class="text-zinc-500 mt-1" id="resumen-usuarios"></p>
-      </div>
-      <button id="btn-nuevo-usuario" class="btn-primario"><i data-icono="mas" class="w-4 h-4"></i>Añadir lector</button>
-    </div>
-    <div class="card overflow-hidden">
-      <div class="p-4 flex flex-wrap gap-3 items-center border-b border-white/[0.06]">
-        <label class="relative flex-1 min-w-[200px]">
-          <i data-icono="buscar" class="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-500"></i>
-          <input type="search" id="buscar-usuarios" placeholder="Nombre, email o curso" class="campo rounded-full pl-10 py-2" />
-        </label>
-        <div class="segmentado" id="filtro-rol">
-          <button class="seg activa" data-valor="">Todos</button>
-          <button class="seg" data-valor="alumno">Alumnos</button>
-          <button class="seg" data-valor="profesor">Profesores</button>
-        </div>
-        <select id="filtro-estado" class="campo w-auto rounded-full py-2 pr-8">
-          <option value="">Cualquier estado</option><option value="activo">Activos</option><option value="suspendido">Suspendidos</option><option value="baja">De baja</option></select>
-      </div>
-      <div class="overflow-x-auto scroll-fino">
-        <table class="w-full text-sm">
-          <thead><tr><th class="th">Lector</th><th class="th">Rol</th><th class="th">Estado</th><th class="th">Préstamos</th><th class="th text-right">Acciones</th></tr></thead>
-          <tbody id="tabla-usuarios" class="divide-y divide-white/[0.05]"></tbody>
-        </table>
-      </div>
-    </div>
-  </section>
-</main>
+  <!-- Isla inferior (solo móvil) -->
+  <nav id="dock" class="lg:hidden fixed z-40 left-1/2 -translate-x-1/2 glass-fuerte rounded-[26px] p-1.5 flex gap-1" style="bottom: calc(.75rem + env(safe-area-inset-bottom))" aria-label="Secciones"></nav>
+</div>
 
-<!-- ─────────── Dock de navegación ─────────── -->
-<nav class="fixed z-40 left-1/2 -translate-x-1/2 glass-fuerte rounded-[26px] p-1.5 flex gap-1" style="bottom: calc(1rem + env(safe-area-inset-bottom))" aria-label="Secciones">
-  <button class="dock-btn activa" data-vista="panel"><i data-icono="panel" class="w-[22px] h-[22px]"></i><span class="text-[11px] font-medium">Panel</span></button>
-  <button class="dock-btn" data-vista="prestamos"><i data-icono="intercambio" class="w-[22px] h-[22px]"></i><span class="text-[11px] font-medium">Préstamos</span>
-    <span id="badge-retrasos" class="hidden absolute top-1 right-2.5 min-w-[18px] h-[18px] px-1 rounded-full bg-ios-red text-white text-[10px] font-semibold grid place-items-center ring-2 ring-[#1c1c20]"></span></button>
-  <button class="dock-btn" data-vista="libros"><i data-icono="libro" class="w-[22px] h-[22px]"></i><span class="text-[11px] font-medium">Catálogo</span></button>
-  <button class="dock-btn" data-vista="usuarios"><i data-icono="usuarios" class="w-[22px] h-[22px]"></i><span class="text-[11px] font-medium">Lectores</span></button>
-</nav>
-
-<!-- ─────────── Modal libro ─────────── -->
+<!-- ─────────── Modal libro (alta/edición) ─────────── -->
 <dialog id="modal-libro" class="glass-fuerte rounded-[26px] w-[min(620px,calc(100%-2rem))]">
   <form id="form-libro" class="p-6" autocomplete="off">
     <div class="flex items-center justify-between mb-6">
@@ -295,7 +430,7 @@
           <input name="isbn" required placeholder="978-84-..." class="campo font-mono" />
           <button type="button" id="btn-buscar-isbn" class="btn-cristal shrink-0 rounded-xl"><i data-icono="destello" class="w-4 h-4 text-ios-yellow"></i><span>Autocompletar</span></button>
         </div>
-        <p id="ayuda-isbn" class="text-xs mt-2 text-zinc-500">Escribe el ISBN y pulsa Autocompletar para traer los datos de Google Books u Open Library.</p>
+        <p id="ayuda-isbn" class="text-xs mt-2 text-t3"></p>
       </div>
       <div class="sm:col-span-6"><label class="etiqueta">Título</label><input name="titulo" required class="campo" /></div>
       <div class="sm:col-span-4"><label class="etiqueta">Autor</label><input name="autor" required class="campo" /></div>
@@ -303,8 +438,7 @@
       <div class="sm:col-span-3"><label class="etiqueta">Editorial</label><input name="editorial" class="campo" /></div>
       <div class="sm:col-span-3"><label class="etiqueta">Categoría</label><input name="categoria" list="lista-cats" class="campo" /><datalist id="lista-cats"></datalist></div>
       <div class="sm:col-span-2"><label class="etiqueta">Ejemplares</label>
-        <input name="ejemplares_totales" type="number" min="0" max="999" required value="1" class="campo" />
-        <p id="ayuda-ejemplares" class="text-xs mt-1.5 text-zinc-500"></p></div>
+        <input name="ejemplares_totales" type="number" min="0" max="999" required value="1" class="campo" /><p id="ayuda-ejemplares" class="text-xs mt-1.5 text-t3"></p></div>
       <div class="sm:col-span-4"><label class="etiqueta">URL de portada</label>
         <div class="flex gap-3 items-center"><input name="portada" type="url" placeholder="https://" class="campo" /><div id="preview-portada" class="w-10 h-14 shrink-0"></div></div></div>
     </div>
@@ -316,7 +450,7 @@
   </form>
 </dialog>
 
-<!-- ─────────── Modal usuario ─────────── -->
+<!-- ─────────── Modal lector (alta/edición) ─────────── -->
 <dialog id="modal-usuario" class="glass-fuerte rounded-[26px] w-[min(540px,calc(100%-2rem))]">
   <form id="form-usuario" class="p-6" autocomplete="off">
     <div class="flex items-center justify-between mb-6">
@@ -337,13 +471,9 @@
       <div class="sm:col-span-2"><label class="etiqueta">Email</label><input name="email" type="email" required class="campo" /></div>
       <div><label class="etiqueta" id="label-curso">Curso</label><input name="curso" placeholder="2º ESO B" class="campo" /></div>
       <div><label class="etiqueta">Membresía</label>
-        <select name="estado" class="campo">
-          <option value="activo">Activa</option>
-          <option value="suspendido">Suspendida</option>
-          <option value="baja">Baja</option>
-        </select></div>
+        <select name="estado" class="campo"><option value="activo">Activa</option><option value="suspendido">Suspendida</option><option value="baja">Baja</option></select></div>
     </div>
-    <p id="info-reglas-usuario" class="mt-4 text-xs text-zinc-500 flex items-center gap-2"></p>
+    <p id="info-reglas-usuario" class="mt-4 text-xs text-t3 flex items-center gap-2"></p>
     <p class="error-form hidden mt-5 text-sm text-ios-red bg-ios-red/10 ring-1 ring-inset ring-ios-red/25 rounded-xl px-3.5 py-2.5"></p>
     <div class="flex justify-end gap-2 mt-7">
       <button type="button" class="cerrar btn-cristal">Cancelar</button>
@@ -352,15 +482,9 @@
   </form>
 </dialog>
 
-<!-- ─────────── Modal ficha (detalle con historial) ─────────── -->
-<dialog id="modal-ficha" class="glass-fuerte rounded-[26px] w-[min(760px,calc(100%-2rem))]">
-  <div class="p-6">
-    <div class="flex items-start justify-between gap-4 mb-6">
-      <div id="ficha-cabecera" class="flex gap-4 items-start"></div>
-      <button type="button" class="cerrar btn-icono shrink-0" aria-label="Cerrar"><i data-icono="cerrar" class="w-4 h-4"></i></button>
-    </div>
-    <div id="ficha-cuerpo"></div>
-  </div>
+<!-- ─────────── Modal ficha (libro o lector) ─────────── -->
+<dialog id="modal-ficha" class="glass-fuerte rounded-[28px] w-[min(780px,calc(100%-2rem))] overflow-hidden">
+  <div id="ficha-contenido"></div>
 </dialog>
 
 <!-- ─────────── Modal confirmación ─────────── -->
@@ -368,7 +492,7 @@
   <div class="p-6 text-center">
     <div class="w-12 h-12 mx-auto rounded-full bg-ios-red/15 text-ios-red grid place-items-center mb-4"><i data-icono="papelera" class="w-5 h-5"></i></div>
     <h2 class="text-lg font-semibold tracking-tight mb-1.5" id="confirmar-titulo"></h2>
-    <p class="text-zinc-400 text-sm" id="confirmar-texto"></p>
+    <p class="text-t3 text-sm" id="confirmar-texto"></p>
     <div class="grid grid-cols-2 gap-2 mt-6">
       <button type="button" id="confirmar-no" class="btn-cristal py-2.5">Cancelar</button>
       <button type="button" id="confirmar-si" class="inline-flex items-center justify-center rounded-full bg-ios-red text-white text-sm font-medium py-2.5 hover:brightness-110 active:scale-[.97] transition"></button>
@@ -376,7 +500,7 @@
   </div>
 </dialog>
 
-<div id="toasts" class="fixed top-20 left-1/2 -translate-x-1/2 z-50 flex flex-col gap-2 items-center pointer-events-none w-[min(440px,calc(100%-2rem))]"></div>
+<div id="toasts" class="fixed top-4 left-1/2 -translate-x-1/2 z-[60] flex flex-col gap-2 items-center pointer-events-none w-[min(440px,calc(100%-2rem))]"></div>
 
 <script src="app.js"></script>
 </body>
