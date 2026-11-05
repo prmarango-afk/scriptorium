@@ -1,0 +1,14 @@
+# Blueprint de Render: despliegue en un clic desde GitHub
+services:
+  - type: web
+    name: scriptorium
+    runtime: node
+    plan: free
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: TZ
+        value: Europe/Madrid

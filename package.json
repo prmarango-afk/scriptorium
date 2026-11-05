@@ -1,0 +1,19 @@
+{
+  "name": "scriptorium",
+  "version": "1.0.0",
+  "description": "Scriptorium: sistema de gestión de biblioteca escolar: libros, usuarios y préstamos (Node.js + Express + SQLite)",
+  "main": "server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node --disable-warning=ExperimentalWarning server.js",
+    "dev": "node --watch --disable-warning=ExperimentalWarning server.js",
+    "test": "node --disable-warning=ExperimentalWarning --test test/*.test.js"
+  },
+  "engines": {
+    "node": "22.x"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "express": "^5.3.0"
+  }
+}
