@@ -2,7 +2,7 @@
 
 Sistema full-stack para gestionar la biblioteca de un centro educativo: catálogo de libros, lectores (alumnos y profesores) y préstamos con control de stock, retrasos e historial.
 
-**Demo en vivo:** _URL_PENDIENTE_
+**Demo en vivo:** https://scriptorium-tdcy.onrender.com (la primera carga puede tardar ~50 s si el servidor estaba dormido)
 
 ## Cuentas y vistas según el rol
 
