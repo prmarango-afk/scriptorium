@@ -82,7 +82,7 @@ function sembrar(db) {
     db.exec(`UPDATE libros SET ejemplares_disponibles = ejemplares_totales -
       (SELECT COUNT(*) FROM prestamos p WHERE p.libro_id = libros.id AND p.fecha_devolucion IS NULL)`);
   });
-  console.log('🌱 Base de datos vacía: cargados datos de demostración');
+  console.log('Base de datos vacía: cargados datos de demostración');
   return true;
 }
 

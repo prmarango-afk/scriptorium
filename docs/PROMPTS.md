@@ -1,4 +1,4 @@
-# 🤖 Uso de la IA en Scriptorium
+# Uso de la IA en Scriptorium
 
 Herramienta: **Claude Code** (Claude Opus) trabajando directamente sobre el repositorio, por fases, con revisión humana en cada fase.
 
@@ -36,3 +36,5 @@ Decisiones donde **no aceptamos la primera opción** o corregimos lo que salió:
 7. **Bugs de UI detectados al probar en el navegador:** scroll horizontal por `w-full` + margen lateral, portadas en blanco (Open Library devuelve un GIF 1×1 si no se pide `?default=false`), texto que se concatenaba en el buscador al reenfocarlo, columnas que no cabían en pantallas medianas.
 8. **Tiempo real con SSE:** el enunciado pide préstamos "en tiempo real"; además de refrescar tras cada acción, los cambios se emiten a todos los navegadores conectados.
 9. **Tests automáticos** de todas las reglas de negocio para detectar regresiones al iterar con la IA.
+10. **Rediseño visual con referencias concretas.** Le pasamos a la IA dos referencias de estilo (*websiteglass.com*, el Liquid Glass de Apple, y *Origin UI*) con dos restricciones: estética Apple y **cero emojis**, todo con iconos SVG coherentes. Resultado: modo oscuro con paneles de cristal translúcido, dock flotante de navegación, colores del sistema iOS, interruptor y controles segmentados nativos, y un set propio de iconos SVG de trazo fino.
+11. **Bug de Tailwind CDN detectado al revisar:** `@apply` sobre una clase CSS propia (`glass`) rompía toda la compilación de Tailwind en el navegador; se movió a CSS plano.

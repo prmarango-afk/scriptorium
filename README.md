@@ -1,28 +1,28 @@
-# 🪶 Scriptorium — Biblioteca escolar
+# Scriptorium — Biblioteca escolar
 
 Sistema full-stack para gestionar la biblioteca de un centro educativo: catálogo de libros, lectores (alumnos y profesores) y préstamos con control de stock, retrasos e historial.
 
-**🌐 Demo en vivo:** _URL_PENDIENTE_
+**Demo en vivo:** _URL_PENDIENTE_
 
-## ✨ Funcionalidades
+## Funcionalidades
 
 | Módulo | Qué hace |
 |---|---|
-| 📚 **Libros** | CRUD completo, validación real de **ISBN-10/13** (dígito de control), **autocompletado por ISBN** (Google Books / Open Library) con portada, control dinámico de ejemplares, filtros por categoría y disponibilidad, búsqueda instantánea sin tildes. |
-| 👥 **Usuarios** | Alta de alumnos (con curso) y profesores (con departamento), estados de membresía **activo / suspendido / baja**, ficha con historial completo. |
-| 🔄 **Préstamos** | Mostrador de préstamo con validación en vivo, **descuento atómico de stock**, fecha límite automática por rol, **renovaciones**, **devolución**, alertas de **retraso** y avisos de vencimiento. |
-| 📊 **Panel** | KPIs, préstamos con retraso, vencimientos en 3 días, gráfico de actividad de 14 días, ranking de más leídos y catálogo por categoría. |
-| ⚡ **Tiempo real** | Server-Sent Events: cualquier cambio aparece al instante en todos los navegadores abiertos. |
+| **Libros** | CRUD completo, validación real de **ISBN-10/13** (dígito de control), **autocompletado por ISBN** (Google Books / Open Library) con portada, control dinámico de ejemplares, filtros por categoría y disponibilidad, búsqueda instantánea sin tildes. |
+| **Usuarios** | Alta de alumnos (con curso) y profesores (con departamento), estados de membresía **activo / suspendido / baja**, ficha con historial completo. |
+| **Préstamos** | Mostrador de préstamo con validación en vivo, **descuento atómico de stock**, fecha límite automática por rol, **renovaciones**, **devolución**, alertas de **retraso** y avisos de vencimiento. |
+| **Panel** | KPIs, préstamos con retraso, vencimientos en 3 días, gráfico de actividad de 14 días, ranking de más leídos y catálogo por categoría. |
+| **Tiempo real** | Server-Sent Events: cualquier cambio aparece al instante en todos los navegadores abiertos. |
 
-### 📏 Reglas de negocio (`db.js → REGLAS`)
-- 🎒 Alumnos: máximo **3 libros**, **15 días**. 🧑‍🏫 Profesores: máximo **6 libros**, **30 días**.
+### Reglas de negocio (`db.js → REGLAS`)
+- Alumnos: máximo **3 libros**, **15 días**. Profesores: máximo **6 libros**, **30 días**.
 - No se presta si **no quedan ejemplares**, si el usuario está **suspendido/de baja**, si tiene **algún préstamo con retraso** o si **ya tiene ese libro**.
 - Hasta **2 renovaciones**, solo si el préstamo no va con retraso.
 - No se puede reducir el número de ejemplares por debajo de los prestados.
 - Libros y usuarios con historial no se borran: pasan a **baja lógica** para conservar el historial.
 - Todas las operaciones de préstamo/devolución van en **transacción** y la BD tiene `CHECK` para que el stock nunca sea negativo ni supere el total.
 
-## 🧱 Stack
+## Stack
 
 - **Backend:** Node.js 22 + Express 5 (monolito, API REST)
 - **Base de datos:** SQLite con el módulo nativo `node:sqlite` (sin dependencias nativas que compilar)
@@ -40,7 +40,7 @@ Sistema full-stack para gestionar la biblioteca de un centro educativo: catálog
 └── docs/PROMPTS.md  Cómo hemos usado la IA
 ```
 
-## 🚀 Ejecutar en local
+## Ejecutar en local
 
 ```bash
 npm install
@@ -50,7 +50,7 @@ npm test           # pruebas automáticas
 
 Variables de entorno opcionales: `PORT`, `DB_PATH` (ruta del fichero SQLite), `SEED=false` (no cargar datos demo), `GOOGLE_BOOKS_API_KEY`, `TZ`.
 
-## 🔌 API REST
+## API REST
 
 | Método | Ruta | Descripción |
 |---|---|---|
@@ -71,6 +71,6 @@ Variables de entorno opcionales: `PORT`, `DB_PATH` (ruta del fichero SQLite), `S
 
 Los errores devuelven `{ "error": "mensaje legible" }` con el código HTTP adecuado (400 validación, 404 no existe, 409 regla de negocio).
 
-## ☁️ Despliegue
+## Despliegue
 
 En Render: **New → Blueprint → seleccionar este repositorio** (lee `render.yaml`). En el plan gratuito el disco no es persistente: al reiniciarse el servicio se vuelven a cargar los datos de demostración. Para persistencia real basta con montar un disco y poner `DB_PATH=/var/data/library.db`.

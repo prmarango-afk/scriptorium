@@ -375,7 +375,7 @@ if (require.main === module) {
   const db = abrir();
   if (process.env.SEED !== 'false') sembrar(db);
   const PORT = process.env.PORT || 3000;
-  crearApp(db).listen(PORT, () => console.log(`🪶 Scriptorium en http://localhost:${PORT}`));
+  crearApp(db).listen(PORT, () => console.log(`Scriptorium en http://localhost:${PORT}`));
 }
 
 module.exports = { crearApp };
